@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sil"
+authors = [
+    {name = "Thijs Janssen", email = "thijs@seecr.nl"},
+    {name = "Johan Jonkers", email = "johan@seecr.nl"},
+]
+description = "Seecr Index Lib adds indexing capabilities to webbased apps"
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["swl"]
+license = {file = "LICENSE"}
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "pytest >= 8.3.5, < 9",
+    "pytest-asyncio >= 0.26.0, < 1",
+    "pytest-xdist >= 3.6.1, < 4",
+    "python-multipart >= 0.0.20, < 1",
+    "JCC",
+    "lucene",
+]
+dynamic = ["version"]
+
+[tool.setuptools_scm]
+version_file = "sil/_version.py"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.isort]
+profile = "black"
