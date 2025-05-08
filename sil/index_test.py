@@ -20,5 +20,8 @@ def index(tmp_path):
 
 async def test_create_index(tmp_path):
     assert len(list(tmp_path.glob("*"))) == 0
-    Index(tmp_path, IndexFields())
-    assert len(list(tmp_path.glob("*"))) == 2
+    try:
+        index = Index(tmp_path, IndexFields())
+        assert len(list(tmp_path.glob("*"))) == 2
+    finally:
+        index.shutdown()
