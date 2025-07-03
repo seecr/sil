@@ -33,6 +33,7 @@ class Lucene:
             )
             logger.info(f"Lucene: auto-commit interval: {commit_timeout}")
         else:
+            self._writer.commit()
             logger.info(f"Lucene: auto-commit disabled")
 
     def shutdown(self):

@@ -88,7 +88,9 @@ class Index:
         self._index_path = path / "index"
         self._index_path.mkdir(parents=True, exist_ok=True)
 
-        self._lucene = Lucene(path, commit_timeout=commit_timeout)
+        self._lucene = Lucene(
+            path, commit_timeout=0 if immediate_commit else commit_timeout
+        )
         self._profile = profile
         self._immediate_commit = immediate_commit
 
@@ -96,7 +98,7 @@ class Index:
         self._lucene.shutdown()
 
     async def add_record(self, record_id, field_data):
-        self.delete_record(record_id)
+        self._delete_record(record_id)
 
         doc = Document()
         doc.add(IndexField.id_field(record_id))
@@ -111,9 +113,14 @@ class Index:
         if self._immediate_commit:
             self._lucene.commit()
 
-    def delete_record(self, record_id):
+    def _delete_record(self, record_id):
         ensure_current_thread_attached()
         self._lucene.writer.deleteDocuments(Term(IndexField.ID_FIELD, record_id))
+
+    def delete_record(self, record_id):
+        self._delete_record(record_id)
+        if self._immediate_commit:
+            self._lucene.commit()
 
     def search(self, query, page=1, limit=20, sortedby=None):
         skipRecords = (page - 1) * limit
