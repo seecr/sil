@@ -25,13 +25,20 @@ class Lucene:
         self._config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND)
 
         self._writer = IndexWriter(self._directory, self._config)
-        self._commit_task = asyncio.create_task(
-            Commit(self, timeout=commit_timeout).watch()
-        )
+
+        self._commit_task = None
+        if commit_timeout > 0:
+            self._commit_task = asyncio.create_task(
+                Commit(self, timeout=commit_timeout).watch()
+            )
+            logger.info(f"Lucene: auto-commit interval: {commit_timeout}")
+        else:
+            logger.info(f"Lucene: auto-commit disabled")
 
     def shutdown(self):
-        logger.info("Lucene: Cancelling auto-commit")
-        self._commit_task.cancel()
+        if self._commit_task is not None:
+            logger.info("Lucene: Cancelling auto-commit")
+            self._commit_task.cancel()
         if self._writer.isOpen():
             logger.info(f"Lucene: Commiting and closing writer {self._writer!r}")
             self._writer.commit()
