@@ -26,36 +26,38 @@ def ensure_current_thread_attached():
         vmEnv.attachCurrentThread()
 
 
-class IndexFields:
+class IndexProfile:
     def __init__(self, fields=None):
         self._fields = fields or []
+
+        unqualified_fields = [f for f in self._fields if f.is_unqualified]
+        if len(unqualified_fields) > 1:
+            raise RuntimeError("Multiple unqualified fields")
+        self._unqualified_field = (
+            unqualified_fields[0] if len(unqualified_fields) == 1 else None
+        )
+
+    @property
+    def unqualified(self):
+        return self._unqualified_field
 
     @property
     def fields(self):
         return self._fields
 
-    def add_field(self, name, fieldtype, stored=False):
-        self._fields.append(
-            dict(
-                name=name,
-                field=fieldtype,
-                stored=False,
-                storable=fieldtype not in [IntPoint, LongPoint],
-                tokenized=False,
-            )
-        )
-
 
 class IndexField:
     ID_FIELD = "__id__"
 
-    def __init__(self, name, fieldtype, stored=False, convert=None):
+    def __init__(self, name, fieldtype, stored=False, unqualified=False):
         self._name = name
         self._fieldtype = fieldtype
         self._stored = stored
-        self._convert = lambda x: x if convert is None else convert
+        self._unqualified = unqualified
 
     def as_doc_field(self, value):
+        if self._unqualified and isinstance(value, list):
+            value = " ".join(value)
         return self._fieldtype(
             self._name, value, Field.Store.YES if self._stored else Field.Store.NO
         )
@@ -63,6 +65,10 @@ class IndexField:
     @property
     def name(self):
         return self._name
+
+    @property
+    def is_unqualified(self):
+        return self._unqualified
 
     @classmethod
     def id_field(cls, record_id):
@@ -72,14 +78,19 @@ class IndexField:
     def text(cls, name, stored=False):
         return cls(name, TextField, stored=stored)
 
+    @classmethod
+    def unqualified(cls, name):
+        return cls(name, TextField, unqualified=True)
+
 
 class Index:
-    def __init__(self, path, fields):
+    def __init__(self, path, profile, commit_timeout=10, immediate_commit=False):
         self._index_path = path / "index"
         self._index_path.mkdir(parents=True, exist_ok=True)
 
-        self._lucene = Lucene(path)
-        self._fields = fields
+        self._lucene = Lucene(path, commit_timeout=commit_timeout)
+        self._profile = profile
+        self._immediate_commit = immediate_commit
 
     def shutdown(self):
         self._lucene.shutdown()
@@ -89,7 +100,7 @@ class Index:
 
         doc = Document()
         doc.add(IndexField.id_field(record_id))
-        for field in self._fields.fields:
+        for field in self._profile.fields:
             if (value := field_data.get(field.name)) is not None:
                 if isinstance(value, list):
                     for each in value:
@@ -97,6 +108,8 @@ class Index:
                 else:
                     doc.add(field.as_doc_field(value))
         self._lucene.writer.addDocument(doc)
+        if self._immediate_commit:
+            self._lucene.commit()
 
     def delete_record(self, record_id):
         ensure_current_thread_attached()
@@ -121,12 +134,14 @@ class Index:
         return self.search(MatchAllDocsQuery(), page=page, limit=limit)
 
     def search_by_id(self, record_id, page=1, limit=20):
-        return self.search(TermQuery(Term("__id__", record_id)), page=page, limit=limit)
+        return self.search(
+            TermQuery(Term(IndexField.ID_FIELD, record_id)), page=page, limit=limit
+        )
 
     def search_query(self, query, page=1, limit=20):
         if query == "*":
             query = MatchAllDocsQuery()
         else:
-            parser = QueryParser("ALL", self._lucene.analyzer)
+            parser = QueryParser(self._profile.unqualified.name, self._lucene.analyzer)
             query = parser.parse(str(query))
         return self.search(query, page=page, limit=limit)
