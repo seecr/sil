@@ -126,16 +126,17 @@ class Index:
         skipRecords = (page - 1) * limit
 
         searcher = self._lucene.searcher
-        hits = searcher.search(query, skipRecords + limit).scoreDocs
-        count = len(hits)
+        results = searcher.search(query, skipRecords + limit)
+        total = searcher.count(query)
+        hits = results.scoreDocs
 
         storedFields = searcher.storedFields()
         results = [
             storedFields.document(hits[i].doc)
-            for i in range(skipRecords, min(skipRecords + limit, count))
+            for i in range(skipRecords, min(skipRecords + limit, total))
         ]
 
-        return dict(count=count, docs=results)
+        return dict(count=total, docs=results)
 
     def search_all(self, profile_id, page=1, limit=20):
         return self.search(MatchAllDocsQuery(), page=page, limit=limit)
