@@ -117,8 +117,14 @@ class Index:
         ensure_current_thread_attached()
         self._lucene.writer.deleteDocuments(Term(IndexField.ID_FIELD, record_id))
 
-    def delete_record(self, record_id):
+    def delete_record(self, record_id, immediate_commit=False):
         self._delete_record(record_id)
+        if immediate_commit or self._immediate_commit:
+            self._lucene.commit()
+
+    def delete_all(self):
+        ensure_current_thread_attached()
+        self._lucene.writer.deleteAll()
         if self._immediate_commit:
             self._lucene.commit()
 
