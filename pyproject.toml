@@ -18,12 +18,12 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "pytest >= 8.3.5, < 9",
+    "JCC >= 3.15, < 4",
+    "lucene >= 10.0.0, < 11",
+    "pytest >= 8.4.1, < 9",
     "pytest-asyncio >= 0.26.0, < 1",
-    "pytest-xdist >= 3.6.1, < 4",
+    "pytest-xdist >= 3.8.0, < 4",
     "python-multipart >= 0.0.20, < 1",
-    "JCC",
-    "lucene",
 ]
 dynamic = ["version"]
 
