@@ -73,6 +73,44 @@ async def test_add_search_delete(tmp_path):
     assert results["count"] == 0
 
 
+async def test_sorting_non_sortable_field(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.text(name="field"),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    await index.add_record("id_1", dict(field="Aap", ALL="value"))
+
+    with pytest.raises(RuntimeError) as e:
+        index.search_query("value", sort="field")
+
+    assert repr(e) == "<ExceptionInfo RuntimeError('Unsortable field: field') tblen=3>"
+
+
+async def test_sorting_non_existing_field(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.text(name="field"),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    await index.add_record("id_1", dict(field="Aap", ALL="value"))
+
+    with pytest.raises(RuntimeError) as e:
+        index.search_query("value", sort="error")
+
+    assert repr(e) == "<ExceptionInfo RuntimeError('Unknown field: error') tblen=3>"
+
+
 async def test_sorting(tmp_path):
     index = Index(
         path=tmp_path,

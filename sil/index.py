@@ -85,6 +85,10 @@ class IndexField:
         return self._name
 
     @property
+    def is_sortable(self):
+        return self._sortable
+
+    @property
     def field_type(self):
         return self._fieldtype
 
@@ -158,6 +162,11 @@ class Index:
         searcher = self._lucene.searcher
         sorting = Sort.RELEVANCE
         if sort is not None:
+            if (field := self._profile.get(sort)) is None:
+                raise RuntimeError(f"Unknown field: {sort}")
+
+            if not field.is_sortable:
+                raise RuntimeError(f"Unsortable field: {sort}")
             sort_type = SortField.Type.STRING
             sort_field = SortField(sort, sort_type, sort_reverse)
             sorting = Sort([sort_field])
