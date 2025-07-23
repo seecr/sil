@@ -76,7 +76,9 @@ class IndexField:
             )
         )
         if self._sortable:
-            field_values.append(SortedDocValuesField(self._name, BytesRef(value)))
+            field_values.append(
+                SortedDocValuesField(f"sort_{self._name}", BytesRef(value))
+            )
 
         return field_values
 
@@ -168,7 +170,7 @@ class Index:
             if not field.is_sortable:
                 raise RuntimeError(f"Unsortable field: {sort}")
             sort_type = SortField.Type.STRING
-            sort_field = SortField(sort, sort_type, sort_reverse)
+            sort_field = SortField(f"sort_{sort}", sort_type, sort_reverse)
             sorting = Sort([sort_field])
 
         results = searcher.search(query, skipRecords + limit, sorting)
