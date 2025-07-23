@@ -8,6 +8,7 @@ from org.apache.lucene.document import (
     TextField,
     IntPoint,
     LongPoint,
+    SortedDocValuesField,
 )
 from org.apache.lucene.search import (
     TermQuery,
@@ -15,7 +16,10 @@ from org.apache.lucene.search import (
     MatchAllDocsQuery,
     BooleanQuery,
     BooleanClause,
+    Sort,
+    SortField,
 )
+from org.apache.lucene.util import BytesRef
 from org.apache.lucene.queryparser.classic import QueryParser
 
 from .lucene import Lucene
@@ -27,10 +31,10 @@ def ensure_current_thread_attached():
 
 
 class IndexProfile:
-    def __init__(self, fields=None):
-        self._fields = fields or []
+    def __init__(self, fields):
+        self._fields = {field.name: field for field in fields}
 
-        unqualified_fields = [f for f in self._fields if f.is_unqualified]
+        unqualified_fields = [f for f in fields if f.is_unqualified]
         if len(unqualified_fields) > 1:
             raise RuntimeError("Multiple unqualified fields")
         self._unqualified_field = (
@@ -43,28 +47,46 @@ class IndexProfile:
 
     @property
     def fields(self):
-        return self._fields
+        return list(self._fields.values())
+
+    def get(self, name):
+        return self._fields.get(name)
 
 
 class IndexField:
     ID_FIELD = "__id__"
 
-    def __init__(self, name, fieldtype, stored=False, unqualified=False):
+    def __init__(
+        self, name, fieldtype, stored=False, sortable=False, unqualified=False
+    ):
         self._name = name
         self._fieldtype = fieldtype
         self._stored = stored
+        self._sortable = sortable
         self._unqualified = unqualified
 
     def as_doc_field(self, value):
         if self._unqualified and isinstance(value, list):
             value = " ".join(value)
-        return self._fieldtype(
-            self._name, value, Field.Store.YES if self._stored else Field.Store.NO
+
+        field_values = []
+        field_values.append(
+            self._fieldtype(
+                self._name, value, Field.Store.YES if self._stored else Field.Store.NO
+            )
         )
+        if self._sortable:
+            field_values.append(SortedDocValuesField(self._name, BytesRef(value)))
+
+        return field_values
 
     @property
     def name(self):
         return self._name
+
+    @property
+    def field_type(self):
+        return self._fieldtype
 
     @property
     def is_unqualified(self):
@@ -75,8 +97,8 @@ class IndexField:
         return StringField(cls.ID_FIELD, str(record_id), Field.Store.YES)
 
     @classmethod
-    def text(cls, name, stored=False):
-        return cls(name, TextField, stored=stored)
+    def text(cls, name, **kwargs):
+        return cls(name, TextField, **kwargs)
 
     @classmethod
     def unqualified(cls, name):
@@ -106,9 +128,11 @@ class Index:
             if (value := field_data.get(field.name)) is not None:
                 if isinstance(value, list):
                     for each in value:
-                        doc.add(field.as_doc_field(each))
+                        for field_value in field.as_doc_field(each):
+                            doc.add(field_value)
                 else:
-                    doc.add(field.as_doc_field(value))
+                    for field_value in field.as_doc_field(value):
+                        doc.add(field_value)
         self._lucene.writer.addDocument(doc)
         if self._immediate_commit:
             self._lucene.commit()
@@ -128,11 +152,18 @@ class Index:
         if self._immediate_commit:
             self._lucene.commit()
 
-    def search(self, query, page=1, limit=20, sortedby=None):
+    def search(self, query, page=1, limit=20, sort=None, sort_reverse=False):
         skipRecords = (page - 1) * limit
 
         searcher = self._lucene.searcher
-        results = searcher.search(query, skipRecords + limit)
+        sorting = Sort.RELEVANCE
+        if sort is not None:
+            sort_type = SortField.Type.STRING
+            sort_field = SortField(sort, sort_type, sort_reverse)
+            sorting = Sort([sort_field])
+
+        results = searcher.search(query, skipRecords + limit, sorting)
+
         total = searcher.count(query)
         hits = results.scoreDocs
 
@@ -152,10 +183,12 @@ class Index:
             TermQuery(Term(IndexField.ID_FIELD, record_id)), page=page, limit=limit
         )
 
-    def search_query(self, query, page=1, limit=20):
+    def search_query(self, query, page=1, limit=20, sort=None, sort_reverse=False):
         if query == "*":
             query = MatchAllDocsQuery()
         else:
             parser = QueryParser(self._profile.unqualified.name, self._lucene.analyzer)
             query = parser.parse(str(query))
-        return self.search(query, page=page, limit=limit)
+        return self.search(
+            query, page=page, limit=limit, sort=sort, sort_reverse=sort_reverse
+        )
