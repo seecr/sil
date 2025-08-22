@@ -103,6 +103,10 @@ class IndexField:
         return StringField(cls.ID_FIELD, str(record_id), Field.Store.YES)
 
     @classmethod
+    def untokenized(cls, name, **kwargs):
+        return cls(name, StringField, **kwargs)
+
+    @classmethod
     def text(cls, name, **kwargs):
         return cls(name, TextField, **kwargs)
 
@@ -130,6 +134,7 @@ class Index:
 
         doc = Document()
         doc.add(IndexField.id_field(record_id))
+
         for field in self._profile.fields:
             if (value := field_data.get(field.name)) is not None:
                 if isinstance(value, list):
@@ -193,6 +198,9 @@ class Index:
         return self.search(
             TermQuery(Term(IndexField.ID_FIELD, record_id)), page=page, limit=limit
         )
+
+    def search_by_term(self, field, value, page=1, limit=20):
+        return self.search(TermQuery(Term(field, value)), page=page, limit=limit)
 
     def search_query(self, query, page=1, limit=20, sort=None, sort_reverse=False):
         if query == "*":
