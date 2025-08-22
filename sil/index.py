@@ -199,8 +199,8 @@ class Index:
             TermQuery(Term(IndexField.ID_FIELD, record_id)), page=page, limit=limit
         )
 
-    def search_by_term(self, field, value, page=1, limit=20):
-        return self.search(TermQuery(Term(field, value)), page=page, limit=limit)
+    def search_by_term(self, field, value, *args, **kwargs):
+        return self.search(TermQuery(Term(field, value)), *args, **kwargs)
 
     def search_query(self, query, page=1, limit=20, sort=None, sort_reverse=False):
         if query == "*":
