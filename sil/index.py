@@ -1,15 +1,7 @@
 import lucene
 
 from org.apache.lucene.index import Term
-from org.apache.lucene.document import (
-    Document,
-    Field,
-    StringField,
-    TextField,
-    IntPoint,
-    LongPoint,
-    SortedDocValuesField,
-)
+from org.apache.lucene.document import Document
 from org.apache.lucene.search import (
     TermQuery,
     IndexSearcher,
@@ -19,10 +11,25 @@ from org.apache.lucene.search import (
     Sort,
     SortField,
 )
+from org.apache.lucene.store import FSDirectory
 from org.apache.lucene.util import BytesRef
+
+from org.apache.lucene.facet import (
+    FacetField,
+    FacetsConfig,
+    FacetsCollector,
+    DrillDownQuery,
+)
+from org.apache.lucene.facet.taxonomy import FastTaxonomyFacetCounts
+from org.apache.lucene.facet.taxonomy.directory import (
+    DirectoryTaxonomyWriter,
+    DirectoryTaxonomyReader,
+)
 from org.apache.lucene.queryparser.classic import QueryParser
+from java.nio.file import Paths
 
 from .lucene import Lucene
+from .indexfield import IndexField
 
 
 def ensure_current_thread_attached():
@@ -30,99 +37,22 @@ def ensure_current_thread_attached():
         vmEnv.attachCurrentThread()
 
 
-class IndexProfile:
-    def __init__(self, fields):
-        self._fields = {field.name: field for field in fields}
-
-        unqualified_fields = [f for f in fields if f.is_unqualified]
-        if len(unqualified_fields) > 1:
-            raise RuntimeError("Multiple unqualified fields")
-        self._unqualified_field = (
-            unqualified_fields[0] if len(unqualified_fields) == 1 else None
-        )
-
-    @property
-    def unqualified(self):
-        return self._unqualified_field
-
-    @property
-    def fields(self):
-        return list(self._fields.values())
-
-    def get(self, name):
-        return self._fields.get(name)
-
-
-class IndexField:
-    ID_FIELD = "__id__"
-
-    def __init__(
-        self, name, fieldtype, stored=False, sortable=False, unqualified=False
-    ):
-        self._name = name
-        self._fieldtype = fieldtype
-        self._stored = stored
-        self._sortable = sortable
-        self._unqualified = unqualified
-
-    def as_doc_field(self, value):
-        if self._unqualified and isinstance(value, list):
-            value = " ".join(value)
-
-        field_values = []
-        field_values.append(
-            self._fieldtype(
-                self._name, value, Field.Store.YES if self._stored else Field.Store.NO
-            )
-        )
-        if self._sortable:
-            field_values.append(
-                SortedDocValuesField(f"sort_{self._name}", BytesRef(value))
-            )
-
-        return field_values
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def is_sortable(self):
-        return self._sortable
-
-    @property
-    def field_type(self):
-        return self._fieldtype
-
-    @property
-    def is_unqualified(self):
-        return self._unqualified
-
-    @classmethod
-    def id_field(cls, record_id):
-        return StringField(cls.ID_FIELD, str(record_id), Field.Store.YES)
-
-    @classmethod
-    def untokenized(cls, name, **kwargs):
-        return cls(name, StringField, **kwargs)
-
-    @classmethod
-    def text(cls, name, **kwargs):
-        return cls(name, TextField, **kwargs)
-
-    @classmethod
-    def unqualified(cls, name):
-        return cls(name, TextField, unqualified=True)
-
-
 class Index:
     def __init__(self, path, profile, commit_timeout=10, immediate_commit=False):
         self._index_path = path / "index"
         self._index_path.mkdir(parents=True, exist_ok=True)
 
+        self._taxo_path = path / "taxo"
+        self._taxo_path.mkdir(parents=True, exist_ok=True)
+        self._taxo_dir = FSDirectory.open(Paths.get(self._taxo_path.as_posix()))
+        self._taxowriter = DirectoryTaxonomyWriter(self._taxo_dir)
+
+        self._facets_config = FacetsConfig()
+
         self._lucene = Lucene(
-            path, commit_timeout=0 if immediate_commit else commit_timeout
+            self._index_path, commit_timeout=0 if immediate_commit else commit_timeout
         )
+
         self._profile = profile
         self._immediate_commit = immediate_commit
 
@@ -144,7 +74,13 @@ class Index:
                 else:
                     for field_value in field.as_doc_field(value):
                         doc.add(field_value)
-        self._lucene.writer.addDocument(doc)
+
+        self._lucene.writer.addDocument(
+            self._facets_config.build(self._taxowriter, doc)
+        )
+
+        self._taxowriter.commit()
+
         if self._immediate_commit:
             self._lucene.commit()
 
@@ -163,7 +99,10 @@ class Index:
         if self._immediate_commit:
             self._lucene.commit()
 
-    def search(self, query, page=1, limit=20, sort=None, sort_reverse=False):
+    def search(
+        self, query, page=1, limit=20, sort=None, sort_reverse=False, drilldown=None
+    ):
+        drilldown = drilldown or []
         skipRecords = (page - 1) * limit
 
         searcher = self._lucene.searcher
@@ -189,10 +128,29 @@ class Index:
             for i in range(skipRecords, min(skipRecords + limit, total))
         ]
 
-        return dict(count=total, docs=results)
+        drilldown_results = {}
+        if len(drilldown) > 0:
+            collector = FacetsCollector()
+            searcher.search(query, collector)
 
-    def search_all(self, profile_id, page=1, limit=20):
-        return self.search(MatchAllDocsQuery(), page=page, limit=limit)
+            taxoReader = DirectoryTaxonomyReader(self._taxo_dir)
+            facets = FastTaxonomyFacetCounts(taxoReader, self._facets_config, collector)
+
+            for field in drilldown:
+                name = field["name"]
+                count = field.get("count", 10)
+
+                if (
+                    facet_result := facets.getTopChildren(count, f"facet_{name}")
+                ) is not None:
+                    drilldown_results[name] = [
+                        (i.label, i.count) for i in facet_result.labelValues
+                    ]
+
+        return dict(count=total, docs=results, drilldown=drilldown_results)
+
+    def search_all(self, *args, **kwargs):
+        return self.search(MatchAllDocsQuery(), *args, **kwargs)
 
     def search_by_id(self, record_id, page=1, limit=20):
         return self.search(
@@ -202,12 +160,10 @@ class Index:
     def search_by_term(self, field, value, *args, **kwargs):
         return self.search(TermQuery(Term(field, value)), *args, **kwargs)
 
-    def search_query(self, query, page=1, limit=20, sort=None, sort_reverse=False):
+    def search_query(self, query, *args, **kwargs):
         if query == "*":
             query = MatchAllDocsQuery()
         else:
             parser = QueryParser(self._profile.unqualified.name, self._lucene.analyzer)
             query = parser.parse(str(query))
-        return self.search(
-            query, page=page, limit=limit, sort=sort, sort_reverse=sort_reverse
-        )
+        return self.search(query, *args, **kwargs)

@@ -1,6 +1,8 @@
 import pytest
 
-from .index import Index, IndexProfile, IndexField
+from .index import Index
+from .indexprofile import IndexProfile
+from .indexfield import IndexField
 
 
 class Dict(dict):
@@ -138,3 +140,46 @@ async def test_sorting(tmp_path):
     results = index.search_query("value", sort="field", sort_reverse=True)
     ids = [hit["__id__"] for hit in results["docs"]]
     assert ids == ["id_2", "id_3", "id_1"]
+
+
+async def test_drilldown(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="name"),
+                IndexField.untokenized(name="year", drilldown=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+
+    await index.add_record("id_1", dict(name="John", year="2025", ALL="value john"))
+    await index.add_record("id_2", dict(name="Jane", year="2025", ALL="value jane"))
+    await index.add_record("id_3", dict(name="John", year="2024", ALL="value john"))
+
+    results = index.search_all(drilldown=[dict(name="year")])
+    assert results["count"] == 3
+    assert "year" in results["drilldown"]
+    assert results["drilldown"]["year"] == [("2025", 2), ("2024", 1)]
+
+    results = index.search_by_term("name", "John", drilldown=[dict(name="year")])
+    assert results["count"] == 2
+    assert "year" in results["drilldown"]
+    assert results["drilldown"]["year"] == [("2025", 1), ("2024", 1)]
+
+    results = index.search_query("+value +john", drilldown=[dict(name="year")])
+    assert results["count"] == 2
+    assert "year" in results["drilldown"]
+    assert results["drilldown"]["year"] == [("2025", 1), ("2024", 1)]
+
+    results = index.search_query("value john", drilldown=[dict(name="year")])
+    assert results["count"] == 3
+    assert "year" in results["drilldown"]
+    assert results["drilldown"]["year"] == [("2025", 2), ("2024", 1)]
+
+    index.delete_record("id_3")
+    results = index.search_all(drilldown=[dict(name="year")])
+    assert "year" in results["drilldown"]
+    assert results["drilldown"]["year"] == [("2025", 2)]
