@@ -19,6 +19,7 @@ class IndexField:
         sortable=False,
         unqualified=False,
         drilldown=False,
+        suggest=False,
     ):
         self._name = name
         self._fieldtype = fieldtype
@@ -26,6 +27,7 @@ class IndexField:
         self._sortable = sortable
         self._drilldown = drilldown
         self._unqualified = unqualified
+        self._suggest = suggest
 
     def as_doc_field(self, value):
         if self._unqualified and isinstance(value, list):
@@ -65,6 +67,10 @@ class IndexField:
     @property
     def is_drilldown(self):
         return self._drilldown
+
+    @property
+    def is_suggest(self):
+        return self._suggest
 
     @classmethod
     def id_field(cls, record_id):

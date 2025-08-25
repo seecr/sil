@@ -24,7 +24,7 @@ async def test_create_index(tmp_path):
     assert len(list(tmp_path.glob("*"))) == 0
     try:
         index = Index(tmp_path, IndexProfile([]))
-        assert len(list(tmp_path.glob("*"))) == 2
+        assert set([n.name for n in tmp_path.glob("*")]) == {"index", "taxo", "suggest"}
     finally:
         index.shutdown()
 
@@ -183,3 +183,27 @@ async def test_drilldown(tmp_path):
     results = index.search_all(drilldown=[dict(name="year")])
     assert "year" in results["drilldown"]
     assert results["drilldown"]["year"] == [("2025", 2)]
+
+
+async def test_suggest(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="keywords", suggest=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    await index.add_record(
+        "id_1", dict(keywords=["rock", "paper", "scissors"], ALL="value")
+    )
+    await index.add_record("id_2", dict(keywords=["rack"], ALL="value"))
+    await index.add_record("id_3", dict(keywords=["paperwork", "scale"], ALL="value"))
+
+    assert index.suggest("keywords", "") == []
+    assert index.suggest("keywords", "r") == ["rock", "rack"]
+    assert index.suggest("keywords", "sc") == ["scissors", "scale"]
+    assert index.suggest("keywords", "paper") == ["paper", "paperwork"]
+    assert index.suggest("keywords", "paperwork") == ["paperwork"]

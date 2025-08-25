@@ -25,8 +25,13 @@ from org.apache.lucene.facet.taxonomy.directory import (
     DirectoryTaxonomyWriter,
     DirectoryTaxonomyReader,
 )
+
+from org.apache.lucene.search.suggest.analyzing import AnalyzingInfixSuggester
+from org.apache.lucene.analysis.standard import StandardAnalyzer
+
 from org.apache.lucene.queryparser.classic import QueryParser
 from java.nio.file import Paths
+from java.util import HashSet
 
 from .lucene import Lucene
 from .indexfield import IndexField
@@ -37,6 +42,10 @@ def ensure_current_thread_attached():
         vmEnv.attachCurrentThread()
 
 
+def _as_directory(path):
+    return FSDirectory.open(Paths.get(path.as_posix()))
+
+
 class Index:
     def __init__(self, path, profile, commit_timeout=10, immediate_commit=False):
         self._index_path = path / "index"
@@ -44,8 +53,13 @@ class Index:
 
         self._taxo_path = path / "taxo"
         self._taxo_path.mkdir(parents=True, exist_ok=True)
-        self._taxo_dir = FSDirectory.open(Paths.get(self._taxo_path.as_posix()))
+        self._taxo_dir = _as_directory(self._taxo_path)
         self._taxowriter = DirectoryTaxonomyWriter(self._taxo_dir)
+
+        self._suggest_path = path / "suggest"
+        self._suggest_path.mkdir(parents=True, exist_ok=True)
+        self._suggesters = {}
+        self._dirty_suggesters = set([])
 
         self._facets_config = FacetsConfig()
 
@@ -54,6 +68,13 @@ class Index:
         )
 
         self._profile = profile
+        for field in self._profile.fields:
+            if field.is_suggest:
+                suggester_path = self._suggest_path / field.name
+                suggester_path.mkdir(parents=True, exist_ok=True)
+                self._suggesters[field.name] = AnalyzingInfixSuggester(
+                    _as_directory(suggester_path), StandardAnalyzer()
+                )
         self._immediate_commit = immediate_commit
 
     def shutdown(self):
@@ -68,6 +89,13 @@ class Index:
         for field in self._profile.fields:
             if (value := field_data.get(field.name)) is not None:
                 if isinstance(value, list):
+                    if field.is_suggest:
+                        for each in value:
+                            self._suggesters[field.name].add(
+                                BytesRef(each), HashSet(), 1, BytesRef(each)
+                            )
+                            self._dirty_suggesters.add(field.name)
+
                     for each in value:
                         for field_value in field.as_doc_field(each):
                             doc.add(field_value)
@@ -167,3 +195,14 @@ class Index:
             parser = QueryParser(self._profile.unqualified.name, self._lucene.analyzer)
             query = parser.parse(str(query))
         return self.search(query, *args, **kwargs)
+
+    def suggest(self, field, value):
+        suggester = self._suggesters[field]
+        if field in self._dirty_suggesters:
+            suggester.refresh()
+            self._dirty_suggesters.remove(field)
+
+        return [
+            each.payload.utf8ToString()
+            for each in suggester.lookup(value, 10, False, False)
+        ]
