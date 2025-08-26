@@ -5,16 +5,6 @@ from .indexprofile import IndexProfile
 from .indexfield import IndexField
 
 
-class Dict(dict):
-    def __getattribute__(self, key):
-        if key in self:
-            return self[key]
-        return dict.__getattribute__(self, key)
-
-    def __setattr__(self, key, value):
-        self[key] = value
-
-
 @pytest.fixture
 def index(tmp_path):
     return Index(tmp_path)
@@ -22,11 +12,9 @@ def index(tmp_path):
 
 async def test_create_index(tmp_path):
     assert len(list(tmp_path.glob("*"))) == 0
-    try:
-        index = Index(tmp_path, IndexProfile([]))
-        assert set([n.name for n in tmp_path.glob("*")]) == {"index", "taxo", "suggest"}
-    finally:
-        index.shutdown()
+
+    index = Index(tmp_path, IndexProfile([]), immediate_commit=True)
+    assert set([n.name for n in tmp_path.glob("*")]) == {"index", "taxo"}
 
 
 async def test_indexfields_unqualified(tmp_path):

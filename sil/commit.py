@@ -2,11 +2,21 @@ import asyncio
 
 
 class Commit:
-    def __init__(self, lucene, timeout=10):
+    def __init__(self, timeout=10):
         self._timeout = timeout
-        self._lucene = lucene
+        self._targets = []
 
-    async def watch(self):
+    def add_target(self, target):
+        self._targets.append(target)
+
+    def do(self):
+        for target in self._targets:
+            target.commit()
+
+    async def _watch(self):
         while True:
-            self._lucene.commit()
+            self.do()
             await asyncio.sleep(self._timeout)
+
+    def as_task(self):
+        return asyncio.create_task(self._watch())

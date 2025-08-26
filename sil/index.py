@@ -1,116 +1,85 @@
-import lucene
+from .utils import ensure_current_thread_attached, mkdir
 
 from org.apache.lucene.index import Term
 from org.apache.lucene.document import Document
 from org.apache.lucene.search import (
     TermQuery,
-    IndexSearcher,
     MatchAllDocsQuery,
-    BooleanQuery,
-    BooleanClause,
     Sort,
     SortField,
 )
-from org.apache.lucene.store import FSDirectory
-from org.apache.lucene.util import BytesRef
-
-from org.apache.lucene.facet import (
-    FacetField,
-    FacetsConfig,
-    FacetsCollector,
-    DrillDownQuery,
-)
-from org.apache.lucene.facet.taxonomy import FastTaxonomyFacetCounts
-from org.apache.lucene.facet.taxonomy.directory import (
-    DirectoryTaxonomyWriter,
-    DirectoryTaxonomyReader,
-)
-
-from org.apache.lucene.search.suggest.analyzing import AnalyzingInfixSuggester
-from org.apache.lucene.analysis.standard import StandardAnalyzer
 
 from org.apache.lucene.queryparser.classic import QueryParser
-from java.nio.file import Paths
-from java.util import HashSet
 
 from .lucene import Lucene
+from .commit import Commit
 from .indexfield import IndexField
+from .suggester import Suggester
+from .drilldown import Drilldown
 
+import logging
 
-def ensure_current_thread_attached():
-    if (vmEnv := lucene.getVMEnv()).isCurrentThreadAttached() is False:
-        vmEnv.attachCurrentThread()
-
-
-def _as_directory(path):
-    return FSDirectory.open(Paths.get(path.as_posix()))
+logger = logging.getLogger(__name__)
 
 
 class Index:
     def __init__(self, path, profile, commit_timeout=10, immediate_commit=False):
-        self._index_path = path / "index"
-        self._index_path.mkdir(parents=True, exist_ok=True)
-
-        self._taxo_path = path / "taxo"
-        self._taxo_path.mkdir(parents=True, exist_ok=True)
-        self._taxo_dir = _as_directory(self._taxo_path)
-        self._taxowriter = DirectoryTaxonomyWriter(self._taxo_dir)
-
-        self._suggest_path = path / "suggest"
-        self._suggest_path.mkdir(parents=True, exist_ok=True)
-        self._suggesters = {}
-        self._dirty_suggesters = set([])
-
-        self._facets_config = FacetsConfig()
-
-        self._lucene = Lucene(
-            self._index_path, commit_timeout=0 if immediate_commit else commit_timeout
-        )
-
-        self._profile = profile
-        for field in self._profile.fields:
-            if field.is_suggest:
-                suggester_path = self._suggest_path / field.name
-                suggester_path.mkdir(parents=True, exist_ok=True)
-                self._suggesters[field.name] = AnalyzingInfixSuggester(
-                    _as_directory(suggester_path), StandardAnalyzer()
-                )
+        self._commit = Commit(timeout=commit_timeout)
         self._immediate_commit = immediate_commit
+        self._profile = profile
+
+        self._index_path = mkdir(path / "index")
+        self._lucene = Lucene(self._index_path)
+        self._commit.add_target(self._lucene)
+
+        self._drilldown = Drilldown(path)
+        self._commit.add_target(self._drilldown)
+
+        self._suggesters = {}
+
+        for field in self._profile.suggest_fields():
+            suggester = Suggester(path / "suggest", field.name)
+            self._suggesters[field.name] = suggester
+            self._commit.add_target(suggester)
+
+        self._commit_task = None
+        if not immediate_commit and commit_timeout > 0:
+            self._commit_task = self._commit.as_task()
+            logger.info(f"Index: auto-commit interval: {commit_timeout}")
+        else:
+            logger.info("Index: auto-commit disabled")
 
     def shutdown(self):
+        if self._commit_task is not None:
+            logger.info("Index: Cancelling auto-commit")
+            self._commit_task.cancel()
         self._lucene.shutdown()
+        for suggester in self._suggesters.values():
+            suggester.close()
+
+    def commit(self, immediate_commit=False):
+        if immediate_commit or self._immediate_commit:
+            self._commit.do()
 
     async def add_record(self, record_id, field_data):
         self._delete_record(record_id)
 
         doc = Document()
         doc.add(IndexField.id_field(record_id))
-
         for field in self._profile.fields:
             if (value := field_data.get(field.name)) is not None:
-                if isinstance(value, list):
-                    if field.is_suggest:
-                        for each in value:
-                            self._suggesters[field.name].add(
-                                BytesRef(each), HashSet(), 1, BytesRef(each)
-                            )
-                            self._dirty_suggesters.add(field.name)
+                value_as_list = value if isinstance(value, list) else [value]
+                if field.is_suggest:
+                    for each in value_as_list:
+                        self._suggesters[field.name].add(each)
 
-                    for each in value:
-                        for field_value in field.as_doc_field(each):
-                            doc.add(field_value)
-                else:
-                    for field_value in field.as_doc_field(value):
+                for each in value_as_list:
+                    for field_value in field.as_doc_field(each):
                         doc.add(field_value)
 
-        self._lucene.writer.addDocument(
-            self._facets_config.build(self._taxowriter, doc)
-        )
+        self._lucene.writer.addDocument(self._drilldown.build(doc))
 
-        self._taxowriter.commit()
-
-        if self._immediate_commit:
-            self._lucene.commit()
+        self.commit()
 
     def _delete_record(self, record_id):
         ensure_current_thread_attached()
@@ -118,19 +87,16 @@ class Index:
 
     def delete_record(self, record_id, immediate_commit=False):
         self._delete_record(record_id)
-        if immediate_commit or self._immediate_commit:
-            self._lucene.commit()
+        self.commit(immediate_commit)
 
     def delete_all(self):
         ensure_current_thread_attached()
         self._lucene.writer.deleteAll()
-        if self._immediate_commit:
-            self._lucene.commit()
+        self.commit()
 
     def search(
         self, query, page=1, limit=20, sort=None, sort_reverse=False, drilldown=None
     ):
-        drilldown = drilldown or []
         skipRecords = (page - 1) * limit
 
         searcher = self._lucene.searcher
@@ -151,31 +117,18 @@ class Index:
         hits = results.scoreDocs
 
         storedFields = searcher.storedFields()
-        results = [
+        query_results = [
             storedFields.document(hits[i].doc)
             for i in range(skipRecords, min(skipRecords + limit, total))
         ]
 
-        drilldown_results = {}
-        if len(drilldown) > 0:
-            collector = FacetsCollector()
-            searcher.search(query, collector)
+        drilldown_results = (
+            {}
+            if drilldown is None
+            else self._drilldown.execute(searcher, query, drilldown)
+        )
 
-            taxoReader = DirectoryTaxonomyReader(self._taxo_dir)
-            facets = FastTaxonomyFacetCounts(taxoReader, self._facets_config, collector)
-
-            for field in drilldown:
-                name = field["name"]
-                count = field.get("count", 10)
-
-                if (
-                    facet_result := facets.getTopChildren(count, f"facet_{name}")
-                ) is not None:
-                    drilldown_results[name] = [
-                        (i.label, i.count) for i in facet_result.labelValues
-                    ]
-
-        return dict(count=total, docs=results, drilldown=drilldown_results)
+        return dict(count=total, docs=query_results, drilldown=drilldown_results)
 
     def search_all(self, *args, **kwargs):
         return self.search(MatchAllDocsQuery(), *args, **kwargs)
@@ -198,11 +151,4 @@ class Index:
 
     def suggest(self, field, value):
         suggester = self._suggesters[field]
-        if field in self._dirty_suggesters:
-            suggester.refresh()
-            self._dirty_suggesters.remove(field)
-
-        return [
-            each.payload.utf8ToString()
-            for each in suggester.lookup(value, 10, False, False)
-        ]
+        return suggester.suggest(value)

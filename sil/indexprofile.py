@@ -17,5 +17,8 @@ class IndexProfile:
     def fields(self):
         return list(self._fields.values())
 
+    def suggest_fields(self):
+        return [field for field in self._fields.values() if field.is_suggest]
+
     def get(self, name):
         return self._fields.get(name)
