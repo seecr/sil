@@ -20,6 +20,9 @@ class Drilldown:
     def commit(self):
         self._writer.commit()
 
+    def close(self):
+        self._writer.close()
+
     @property
     def reader(self):
         return DirectoryTaxonomyReader(self._path)

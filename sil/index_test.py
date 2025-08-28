@@ -195,3 +195,28 @@ async def test_suggest(tmp_path):
     assert index.suggest("keywords", "sc") == ["scissors", "scale"]
     assert index.suggest("keywords", "paper") == ["paper", "paperwork"]
     assert index.suggest("keywords", "paperwork") == ["paperwork"]
+
+
+async def test_sortfields(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="keywords"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    assert index.sortfields == []
+    index.shutdown()
+
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="keywords", sortable=True),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    assert index.sortfields == ["keywords"]

@@ -20,5 +20,8 @@ class IndexProfile:
     def suggest_fields(self):
         return [field for field in self._fields.values() if field.is_suggest]
 
+    def sortable_fields(self):
+        return [field for field in self._fields.values() if field.is_sortable]
+
     def get(self, name):
         return self._fields.get(name)

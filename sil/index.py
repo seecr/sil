@@ -49,11 +49,17 @@ class Index:
         else:
             logger.info("Index: auto-commit disabled")
 
+    @property
+    def sortfields(self):
+        return [field.name for field in self._profile.sortable_fields()]
+
     def shutdown(self):
         if self._commit_task is not None:
             logger.info("Index: Cancelling auto-commit")
             self._commit_task.cancel()
         self._lucene.shutdown()
+
+        self._drilldown.close()
         for suggester in self._suggesters.values():
             suggester.close()
 
