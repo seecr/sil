@@ -147,13 +147,17 @@ class Index:
     def search_by_term(self, field, value, *args, **kwargs):
         return self.search(TermQuery(Term(field, value)), *args, **kwargs)
 
-    def search_query(self, query, *args, **kwargs):
+    def parse_query(self, query):
         if query == "*":
             query = MatchAllDocsQuery()
         else:
             parser = QueryParser(self._profile.unqualified.name, self._lucene.analyzer)
             query = parser.parse(str(query))
-        return self.search(query, *args, **kwargs)
+        return query
+
+    def search_query(self, query, *args, **kwargs):
+        parsed_query = self.parse_query(query)
+        return self.search(parsed_query, *args, **kwargs)
 
     def suggest(self, field, value):
         suggester = self._suggesters[field]

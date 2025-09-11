@@ -49,4 +49,5 @@ class Drilldown:
                 facet_result := facets.getTopChildren(count, f"facet_{name}")
             ) is not None:
                 results[name] = [(i.label, i.count) for i in facet_result.labelValues]
+        print("DRILLDOWN RESULTS", results)
         return results
