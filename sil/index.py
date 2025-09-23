@@ -174,6 +174,8 @@ class Index:
         return self.search(TermQuery(Term(field, value)), *args, **kwargs)
 
     def parse_query(self, query):
+        ensure_current_thread_attached()
+
         if query == "*":
             query = MatchAllDocsQuery()
         else:
