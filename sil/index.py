@@ -2,7 +2,7 @@
 #
 # "SIL"(Seecr Index Lib) makes developing index apps easier
 #
-# Copyright (C) 2025 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2025-2026 Seecr (Seek You Too B.V.) https://seecr.nl
 #
 # This file is part of "Seecr Index Lib"
 #
@@ -163,14 +163,17 @@ class Index:
         return dict(count=total, docs=query_results, drilldown=drilldown_results)
 
     def search_all(self, *args, **kwargs):
+        ensure_current_thread_attached()
         return self.search(MatchAllDocsQuery(), *args, **kwargs)
 
     def search_by_id(self, record_id, page=1, limit=20):
+        ensure_current_thread_attached()
         return self.search(
             TermQuery(Term(IndexField.ID_FIELD, record_id)), page=page, limit=limit
         )
 
     def search_by_term(self, field, value, *args, **kwargs):
+        ensure_current_thread_attached()
         return self.search(TermQuery(Term(field, value)), *args, **kwargs)
 
     def parse_query(self, query):
