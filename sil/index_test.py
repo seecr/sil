@@ -101,7 +101,7 @@ async def test_sorting_non_sortable_field(tmp_path):
     await index.add_record("id_1", dict(field="Aap", ALL="value"))
 
     with pytest.raises(RuntimeError) as e:
-        index.search_query("value", sort="field")
+        index.search_query("value", sort=[dict(field="field")])
 
     assert repr(e) == "<ExceptionInfo RuntimeError('Unsortable field: field') tblen=3>"
 
@@ -120,7 +120,7 @@ async def test_sorting_non_existing_field(tmp_path):
     await index.add_record("id_1", dict(field="Aap", ALL="value"))
 
     with pytest.raises(RuntimeError) as e:
-        index.search_query("value", sort="error")
+        index.search_query("value", sort=[dict(field="error")])
 
     assert repr(e) == "<ExceptionInfo RuntimeError('Unknown field: error') tblen=3>"
 
@@ -146,21 +146,62 @@ async def test_sorting(tmp_path):
     ids = [hit["__id__"] for hit in results["docs"]]
     assert ids == ["id_1", "id_2", "id_3"]
 
-    results = index.search_query("value", sort="field")
+    results = index.search_query("value", sort=[dict(field="field")])
     ids = [hit["__id__"] for hit in results["docs"]]
     assert ids == ["id_1", "id_3", "id_2"]
 
-    results = index.search_query("value", sort="field", sort_reverse=True)
+    results = index.search_query("value", sort=[dict(field="field", reverse=True)])
     ids = [hit["__id__"] for hit in results["docs"]]
     assert ids == ["id_2", "id_3", "id_1"]
 
-    results = index.search_query("value", sort="number")
+    results = index.search_query("value", sort=[dict(field="number")])
     ids = [hit["__id__"] for hit in results["docs"]]
     assert ids == ["id_1", "id_2", "id_3"]
 
-    results = index.search_query("value", sort="number", sort_reverse=True)
+    results = index.search_query("value", sort=[dict(field="number", reverse=True)])
     ids = [hit["__id__"] for hit in results["docs"]]
     assert ids == ["id_3", "id_2", "id_1"]
+
+
+async def test_multi_sort(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.int(name="A", sortable=True),
+                IndexField.text(name="B", sortable=True),
+                IndexField.text(name="C", sortable=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+
+    await index.add_record("id_1", dict(A=1, B="aap", C="boom", ALL=["value"]))
+    await index.add_record("id_2", dict(A=2, B="aap", C="roos", ALL=["value"]))
+    await index.add_record("id_3", dict(A=3, B="noot", C="boom", ALL=["value"]))
+    await index.add_record("id_4", dict(A=4, B="aap", C="boom", ALL=["value"]))
+    await index.add_record("id_5", dict(A=5, B="vis", C="boom", ALL=["value"]))
+
+    results = index.search_query("value", sort=[dict(field="B")])
+    ids = [hit["__id__"] for hit in results["docs"]]
+    assert ids == ["id_1", "id_2", "id_4", "id_3", "id_5"]
+
+    results = index.search_query("value", sort="B")
+    ids = [hit["__id__"] for hit in results["docs"]]
+    assert ids == ["id_1", "id_2", "id_4", "id_3", "id_5"]
+
+    results = index.search_query("value", sort=[dict(field="B", reverse=True)])
+    ids = [hit["__id__"] for hit in results["docs"]]
+    assert ids == ["id_5", "id_3", "id_1", "id_2", "id_4"]
+
+    results = index.search_query("value", sort=[dict(field="B"), dict(field="C")])
+    ids = [hit["__id__"] for hit in results["docs"]]
+    assert ids == ["id_1", "id_4", "id_2", "id_3", "id_5"]
+
+    results = index.search_query("value", sort=["B", "C"])
+    ids = [hit["__id__"] for hit in results["docs"]]
+    assert ids == ["id_1", "id_4", "id_2", "id_3", "id_5"]
 
 
 async def test_drilldown(tmp_path):

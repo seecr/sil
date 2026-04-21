@@ -122,9 +122,7 @@ class Index:
         self._lucene.writer.deleteAll()
         self.commit()
 
-    def search(
-        self, query, page=1, limit=20, sort=None, sort_reverse=False, drilldown=None
-    ):
+    def search(self, query, page=1, limit=20, sort=None, drilldown=None):
         ensure_current_thread_attached()
 
         skipRecords = (page - 1) * limit
@@ -132,14 +130,25 @@ class Index:
         searcher = self._lucene.searcher
         sorting = Sort.RELEVANCE
         if sort is not None:
-            if (field := self._profile.get(sort)) is None:
-                raise RuntimeError(f"Unknown field: {sort}")
+            if isinstance(sort, str):
+                sort = [sort]
+            sort_fields = []
+            for each in sort:
+                if isinstance(each, str):
+                    field_name = each
+                    reverse = False
+                else:
+                    field_name = each["field"]
+                    reverse = each.get("reverse", False)
 
-            if not field.is_sortable:
-                raise RuntimeError(f"Unsortable field: {sort}")
+                if (field := self._profile.get(field_name)) is None:
+                    raise RuntimeError(f"Unknown field: {field_name}")
 
-            sort_field = field.as_sort_field(reverse=sort_reverse)
-            sorting = Sort([sort_field])
+                if not field.is_sortable:
+                    raise RuntimeError(f"Unsortable field: {field_name}")
+
+                sort_fields.append(field.as_sort_field(reverse=reverse))
+            sorting = Sort(sort_fields)
 
         results = searcher.search(query, skipRecords + limit, sorting)
 
