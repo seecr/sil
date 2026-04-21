@@ -102,9 +102,8 @@ class Index:
                     for each in value_as_list:
                         self._suggesters[field.name].add(each)
 
-                for each in value_as_list:
-                    for field_value in field.as_doc_field(each):
-                        doc.add(field_value)
+                for field_value in field.as_doc_field(value_as_list):
+                    doc.add(field_value)
 
         self._lucene.writer.addDocument(self._drilldown.build(doc))
 

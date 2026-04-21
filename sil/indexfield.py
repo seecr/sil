@@ -56,25 +56,36 @@ class IndexField:
         self._unqualified = unqualified
         self._suggest = suggest
 
-    def as_doc_field(self, value):
-        if self._unqualified and isinstance(value, list):
-            value = " ".join(value)
+    def as_doc_field(self, values):
+        if values == []:
+            return []
+
+        if self._unqualified:
+            values_as_text = (
+                " ".join(str(v) for v in values) if isinstance(values, list) else values
+            )
+            return [TextField(self._name, values_as_text, Field.Store.NO)]
 
         field_values = []
-        field_values.append(
-            self._fieldtype(
-                self._name, value, Field.Store.YES if self._stored else Field.Store.NO
-            )
-        )
-        if self._sortable:
-            if self._fieldtype == IntField:
-                field_values.append(NumericDocValuesField(f"sort_{self._name}", value))
-            else:
-                field_values.append(
-                    SortedDocValuesField(f"sort_{self._name}", BytesRef(value))
+        for value in values:
+            field_values.append(
+                self._fieldtype(
+                    self._name,
+                    value,
+                    Field.Store.YES if self._stored else Field.Store.NO,
                 )
-        if self._drilldown:
-            field_values.append(FacetField(f"facet_{self._name}", value))
+            )
+            if self._sortable:
+                if self._fieldtype == IntField:
+                    field_values.append(
+                        NumericDocValuesField(f"sort_{self._name}", value)
+                    )
+                else:
+                    field_values.append(
+                        SortedDocValuesField(f"sort_{self._name}", BytesRef(value))
+                    )
+            if self._drilldown:
+                field_values.append(FacetField(f"facet_{self._name}", value))
 
         return field_values
 

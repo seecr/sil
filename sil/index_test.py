@@ -138,9 +138,9 @@ async def test_sorting(tmp_path):
         immediate_commit=True,
     )
 
-    await index.add_record("id_1", dict(field="Aap", number=1, ALL="value"))
-    await index.add_record("id_2", dict(field="Noot", number=2, ALL="value"))
-    await index.add_record("id_3", dict(field="Mies", number=3, ALL="value"))
+    await index.add_record("id_1", dict(field="Aap", number=1, ALL=[1, "value", ""]))
+    await index.add_record("id_2", dict(field="Noot", number=2, ALL=[2, "value"]))
+    await index.add_record("id_3", dict(field="Mies", number=3, ALL=[3, "value"]))
 
     results = index.search_query("value")
     ids = [hit["__id__"] for hit in results["docs"]]
