@@ -131,15 +131,16 @@ async def test_sorting(tmp_path):
         profile=IndexProfile(
             [
                 IndexField.text(name="field", sortable=True),
+                IndexField.int(name="number", sortable=True),
                 IndexField.unqualified(name="ALL"),
             ]
         ),
         immediate_commit=True,
     )
 
-    await index.add_record("id_1", dict(field="Aap", ALL="value"))
-    await index.add_record("id_2", dict(field="Noot", ALL="value"))
-    await index.add_record("id_3", dict(field="Mies", ALL="value"))
+    await index.add_record("id_1", dict(field="Aap", number=1, ALL="value"))
+    await index.add_record("id_2", dict(field="Noot", number=2, ALL="value"))
+    await index.add_record("id_3", dict(field="Mies", number=3, ALL="value"))
 
     results = index.search_query("value")
     ids = [hit["__id__"] for hit in results["docs"]]
@@ -152,6 +153,14 @@ async def test_sorting(tmp_path):
     results = index.search_query("value", sort="field", sort_reverse=True)
     ids = [hit["__id__"] for hit in results["docs"]]
     assert ids == ["id_2", "id_3", "id_1"]
+
+    results = index.search_query("value", sort="number")
+    ids = [hit["__id__"] for hit in results["docs"]]
+    assert ids == ["id_1", "id_2", "id_3"]
+
+    results = index.search_query("value", sort="number", sort_reverse=True)
+    ids = [hit["__id__"] for hit in results["docs"]]
+    assert ids == ["id_3", "id_2", "id_1"]
 
 
 async def test_drilldown(tmp_path):

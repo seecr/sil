@@ -24,7 +24,8 @@
 
 import lucene
 
-lucene.initVM()
+if lucene.getVMEnv() is None:
+    lucene.initVM()
 
 from ._version import __version__  # noqa: E402
 

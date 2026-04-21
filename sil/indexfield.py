@@ -25,9 +25,12 @@
 from org.apache.lucene.document import (
     Field,
     SortedDocValuesField,
+    NumericDocValuesField,
     StringField,
     TextField,
+    IntField,
 )
+from org.apache.lucene.search import SortField
 from org.apache.lucene.util import BytesRef
 from org.apache.lucene.facet import FacetField
 
@@ -64,13 +67,22 @@ class IndexField:
             )
         )
         if self._sortable:
-            field_values.append(
-                SortedDocValuesField(f"sort_{self._name}", BytesRef(value))
-            )
+            if self._fieldtype == IntField:
+                field_values.append(NumericDocValuesField(f"sort_{self._name}", value))
+            else:
+                field_values.append(
+                    SortedDocValuesField(f"sort_{self._name}", BytesRef(value))
+                )
         if self._drilldown:
             field_values.append(FacetField(f"facet_{self._name}", value))
 
         return field_values
+
+    def as_sort_field(self, reverse=False):
+        sort_type = SortField.Type.STRING
+        if self._fieldtype == IntField:
+            sort_type = SortField.Type.INT
+        return SortField(f"sort_{self._name}", sort_type, reverse)
 
     @property
     def name(self):
@@ -107,6 +119,10 @@ class IndexField:
     @classmethod
     def text(cls, name, **kwargs):
         return cls(name, TextField, **kwargs)
+
+    @classmethod
+    def int(cls, name, **kwargs):
+        return cls(name, IntField, **kwargs)
 
     @classmethod
     def unqualified(cls, name):

@@ -30,7 +30,6 @@ from org.apache.lucene.search import (
     TermQuery,
     MatchAllDocsQuery,
     Sort,
-    SortField,
 )
 
 from org.apache.lucene.queryparser.classic import QueryParser
@@ -139,8 +138,8 @@ class Index:
 
             if not field.is_sortable:
                 raise RuntimeError(f"Unsortable field: {sort}")
-            sort_type = SortField.Type.STRING
-            sort_field = SortField(f"sort_{sort}", sort_type, sort_reverse)
+
+            sort_field = field.as_sort_field(reverse=sort_reverse)
             sorting = Sort([sort_field])
 
         results = searcher.search(query, skipRecords + limit, sorting)
