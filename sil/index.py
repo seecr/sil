@@ -90,7 +90,7 @@ class Index:
         if immediate_commit or self._immediate_commit:
             self._commit.do()
 
-    async def add_record(self, record_id, field_data):
+    def add_record(self, record_id, field_data):
         self._delete_record(record_id)
 
         doc = Document()
