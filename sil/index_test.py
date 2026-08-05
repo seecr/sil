@@ -75,7 +75,7 @@ async def test_add_search_delete(tmp_path):
     results = index.search_query("contents")
     assert results["count"] == 0
 
-    await index.add_record(
+    index.add_record(
         "id_1", dict(field_1="Contents of field 1", ALL="Contents of field 1")
     )
 
@@ -98,7 +98,7 @@ async def test_sorting_non_sortable_field(tmp_path):
         ),
         immediate_commit=True,
     )
-    await index.add_record("id_1", dict(field="Aap", ALL="value"))
+    index.add_record("id_1", dict(field="Aap", ALL="value"))
 
     with pytest.raises(RuntimeError) as e:
         index.search_query("value", sort=[dict(field="field")])
@@ -117,7 +117,7 @@ async def test_sorting_non_existing_field(tmp_path):
         ),
         immediate_commit=True,
     )
-    await index.add_record("id_1", dict(field="Aap", ALL="value"))
+    index.add_record("id_1", dict(field="Aap", ALL="value"))
 
     with pytest.raises(RuntimeError) as e:
         index.search_query("value", sort=[dict(field="error")])
@@ -138,9 +138,9 @@ async def test_sorting(tmp_path):
         immediate_commit=True,
     )
 
-    await index.add_record("id_1", dict(field="Aap", number=1, ALL=[1, "value", ""]))
-    await index.add_record("id_2", dict(field="Noot", number=2, ALL=[2, "value"]))
-    await index.add_record("id_3", dict(field="Mies", number=3, ALL=[3, "value"]))
+    index.add_record("id_1", dict(field="Aap", number=1, ALL=[1, "value", ""]))
+    index.add_record("id_2", dict(field="Noot", number=2, ALL=[2, "value"]))
+    index.add_record("id_3", dict(field="Mies", number=3, ALL=[3, "value"]))
 
     results = index.search_query("value")
     ids = [hit["__id__"] for hit in results["docs"]]
@@ -177,11 +177,11 @@ async def test_multi_sort(tmp_path):
         immediate_commit=True,
     )
 
-    await index.add_record("id_1", dict(A=1, B="aap", C="boom", ALL=["value"]))
-    await index.add_record("id_2", dict(A=2, B="aap", C="roos", ALL=["value"]))
-    await index.add_record("id_3", dict(A=3, B="noot", C="boom", ALL=["value"]))
-    await index.add_record("id_4", dict(A=4, B="aap", C="boom", ALL=["value"]))
-    await index.add_record("id_5", dict(A=5, B="vis", C="boom", ALL=["value"]))
+    index.add_record("id_1", dict(A=1, B="aap", C="boom", ALL=["value"]))
+    index.add_record("id_2", dict(A=2, B="aap", C="roos", ALL=["value"]))
+    index.add_record("id_3", dict(A=3, B="noot", C="boom", ALL=["value"]))
+    index.add_record("id_4", dict(A=4, B="aap", C="boom", ALL=["value"]))
+    index.add_record("id_5", dict(A=5, B="vis", C="boom", ALL=["value"]))
 
     results = index.search_query("value", sort=[dict(field="B")])
     ids = [hit["__id__"] for hit in results["docs"]]
@@ -217,9 +217,9 @@ async def test_drilldown(tmp_path):
         immediate_commit=True,
     )
 
-    await index.add_record("id_1", dict(name="John", year="2025", ALL="value john"))
-    await index.add_record("id_2", dict(name="Jane", year="2025", ALL="value jane"))
-    await index.add_record("id_3", dict(name="John", year="2024", ALL="value john"))
+    index.add_record("id_1", dict(name="John", year="2025", ALL="value john"))
+    index.add_record("id_2", dict(name="Jane", year="2025", ALL="value jane"))
+    index.add_record("id_3", dict(name="John", year="2024", ALL="value john"))
 
     results = index.search_all(drilldown=[dict(name="year")])
     assert results["count"] == 3
@@ -258,11 +258,9 @@ async def test_suggest(tmp_path):
         ),
         immediate_commit=True,
     )
-    await index.add_record(
-        "id_1", dict(keywords=["rock", "paper", "scissors"], ALL="value")
-    )
-    await index.add_record("id_2", dict(keywords=["rack"], ALL="value"))
-    await index.add_record("id_3", dict(keywords=["paperwork", "scale"], ALL="value"))
+    index.add_record("id_1", dict(keywords=["rock", "paper", "scissors"], ALL="value"))
+    index.add_record("id_2", dict(keywords=["rack"], ALL="value"))
+    index.add_record("id_3", dict(keywords=["paperwork", "scale"], ALL="value"))
 
     assert index.suggest("keywords", "") == []
     assert index.suggest("keywords", "r") == ["rock", "rack"]
