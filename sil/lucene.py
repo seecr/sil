@@ -48,6 +48,12 @@ class Lucene:
         self._writer = IndexWriter(self._directory, self._config)
         self._writer.commit()
 
+        self._reopen_reader_searcher()
+
+    def _reopen_reader_searcher(self):
+        self._reader = DirectoryReader.open(self._directory)
+        self._searcher = IndexSearcher(self._reader)
+
     def add_commit(self, target):
         self._commit.add_target(target)
 
@@ -67,14 +73,16 @@ class Lucene:
 
     @property
     def reader(self):
-        return DirectoryReader.open(self._directory)
+        return self._reader
 
     @property
     def searcher(self):
-        return IndexSearcher(self.reader)
+        return self._searcher
 
     def commit(self):
         if self._writer.hasUncommittedChanges():
             logger.info(f"Committing changes for {self._writer!r}")
             if self._writer.isOpen():
                 self._writer.commit()
+                self._reader.close()
+                self._reopen_reader_searcher()
