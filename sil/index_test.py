@@ -218,13 +218,13 @@ async def test_drilldown(tmp_path):
     )
 
     index.add_record("id_1", dict(name="John", year="2025", ALL="value john"))
-    index.add_record("id_2", dict(name="Jane", year="2025", ALL="value jane"))
+    index.add_record("id_2", dict(name="Jane", year="2024", ALL="value jane"))
     index.add_record("id_3", dict(name="John", year="2024", ALL="value john"))
 
     results = index.search_all(drilldown=[dict(name="year")])
     assert results["count"] == 3
     assert "year" in results["drilldown"]
-    assert results["drilldown"]["year"] == [("2025", 2), ("2024", 1)]
+    assert results["drilldown"]["year"] == [("2024", 2), ("2025", 1)]
 
     results = index.search_by_term("name", "John", drilldown=[dict(name="year")])
     assert results["count"] == 2
@@ -239,12 +239,50 @@ async def test_drilldown(tmp_path):
     results = index.search_query("value john", drilldown=[dict(name="year")])
     assert results["count"] == 3
     assert "year" in results["drilldown"]
-    assert results["drilldown"]["year"] == [("2025", 2), ("2024", 1)]
+    assert results["drilldown"]["year"] == [("2024", 2), ("2025", 1)]
 
     index.delete_record("id_3")
     results = index.search_all(drilldown=[dict(name="year")])
     assert "year" in results["drilldown"]
-    assert results["drilldown"]["year"] == [("2025", 2)]
+    assert results["drilldown"]["year"] == [("2025", 1), ("2024", 1)]
+
+
+@pytest.mark.skip
+async def test_drilldown_large(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="name"),
+                IndexField.untokenized(name="category", drilldown=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+
+    my_drilldown = {"category": {}}
+    for i in range(10):
+        category = "nine" if i % 9 == 0 else ("even" if i % 2 == 0 else "odd")
+        index.add_record(
+            f"id_{i}",
+            dict(
+                name="John",
+                category=category,
+                ALL="value john",
+            ),
+        )
+        my_drilldown["category"][category] = (
+            my_drilldown["category"].get(category, 0) + 1
+        )
+    results = index.search_all(
+        drilldown=[
+            dict(name="category"),
+        ]
+    )
+    print(results["drilldown"])
+    print(my_drilldown)
+    assert results["count"] == 10
 
 
 async def test_suggest(tmp_path):

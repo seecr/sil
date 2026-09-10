@@ -72,5 +72,7 @@ class Drilldown:
             if (
                 facet_result := facets.getTopChildren(count, f"facet_{name}")
             ) is not None:
-                results[name] = [(i.label, i.count) for i in facet_result.labelValues]
+                results[name] = [
+                    (i.label, i.value.intValue()) for i in facet_result.labelValues
+                ]
         return results
