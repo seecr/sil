@@ -2,7 +2,7 @@
 #
 # "SIL"(Seecr Index Lib) makes developing index apps easier
 #
-# Copyright (C) 2025 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2025-2026 Seecr (Seek You Too B.V.) https://seecr.nl
 #
 # This file is part of "Seecr Index Lib"
 #
@@ -245,44 +245,6 @@ async def test_drilldown(tmp_path):
     results = index.search_all(drilldown=[dict(name="year")])
     assert "year" in results["drilldown"]
     assert results["drilldown"]["year"] == [("2025", 1), ("2024", 1)]
-
-
-@pytest.mark.skip
-async def test_drilldown_large(tmp_path):
-    index = Index(
-        path=tmp_path,
-        profile=IndexProfile(
-            [
-                IndexField.untokenized(name="name"),
-                IndexField.untokenized(name="category", drilldown=True),
-                IndexField.unqualified(name="ALL"),
-            ]
-        ),
-        immediate_commit=True,
-    )
-
-    my_drilldown = {"category": {}}
-    for i in range(10):
-        category = "nine" if i % 9 == 0 else ("even" if i % 2 == 0 else "odd")
-        index.add_record(
-            f"id_{i}",
-            dict(
-                name="John",
-                category=category,
-                ALL="value john",
-            ),
-        )
-        my_drilldown["category"][category] = (
-            my_drilldown["category"].get(category, 0) + 1
-        )
-    results = index.search_all(
-        drilldown=[
-            dict(name="category"),
-        ]
-    )
-    print(results["drilldown"])
-    print(my_drilldown)
-    assert results["count"] == 10
 
 
 async def test_suggest(tmp_path):
