@@ -34,6 +34,8 @@ from org.apache.lucene.facet.taxonomy.directory import (
     DirectoryTaxonomyReader,
 )
 
+from lucene import JavaError
+
 
 class Drilldown:
     def __init__(self, path):
@@ -49,7 +51,10 @@ class Drilldown:
 
     @property
     def reader(self):
-        return DirectoryTaxonomyReader(self._path)
+        try:
+            return DirectoryTaxonomyReader(self._path)
+        except JavaError:
+            return None
 
     @property
     def writer(self):
@@ -62,7 +67,10 @@ class Drilldown:
         collector = FacetsCollector()
         searcher.search(query, collector)
 
-        facets = FastTaxonomyFacetCounts(self.reader, self._facets_config, collector)
+        if (reader := self.reader) is None:
+            return {}
+
+        facets = FastTaxonomyFacetCounts(reader, self._facets_config, collector)
 
         results = {}
         for field in drilldown:

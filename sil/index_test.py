@@ -204,6 +204,23 @@ async def test_multi_sort(tmp_path):
     assert ids == ["id_1", "id_4", "id_2", "id_3", "id_5"]
 
 
+# Opening a DirectoryTaxonomyReader on an empty directory  raises a JavaError
+async def test_drilldown_no_records(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="name"),
+                IndexField.untokenized(name="year", drilldown=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    results = index.search_all(drilldown=[dict(name="year")])
+    assert results["count"] == 0
+
+
 async def test_drilldown(tmp_path):
     index = Index(
         path=tmp_path,
