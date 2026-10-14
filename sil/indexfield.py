@@ -2,7 +2,7 @@
 #
 # "SIL"(Seecr Index Lib) makes developing index apps easier
 #
-# Copyright (C) 2025 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2025-2026 Seecr (Seek You Too B.V.) https://seecr.nl
 #
 # This file is part of "Seecr Index Lib"
 #
@@ -84,7 +84,7 @@ class IndexField:
                     field_values.append(
                         SortedDocValuesField(f"sort_{self._name}", BytesRef(value))
                     )
-            if self._drilldown:
+            if self._drilldown and value:
                 field_values.append(FacetField(f"facet_{self._name}", value))
 
         return field_values

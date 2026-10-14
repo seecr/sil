@@ -264,6 +264,25 @@ async def test_drilldown(tmp_path):
     assert results["drilldown"]["year"] == [("2025", 1), ("2024", 1)]
 
 
+async def test_drilldown_empty_paths(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="drill", drilldown=True),
+            ]
+        ),
+        immediate_commit=True,
+    )
+
+    index.add_record("id_1", dict(drill="path1"))
+    index.add_record("id_2", dict(drill=""))
+
+    results = index.search_all(drilldown=[dict(name="drill")])
+    assert results["count"] == 2
+    assert results["drilldown"]["drill"] == [("path1", 1)]
+
+
 async def test_suggest(tmp_path):
     index = Index(
         path=tmp_path,
