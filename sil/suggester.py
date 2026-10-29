@@ -61,6 +61,9 @@ class Suggester:
             self._suggester.refresh()
             self._dirty = False
 
+        if self._suggester.getCount() == 0:
+            return []  # lookup() raises "suggester was not built" while it is empty
+
         return [
             each.payload.utf8ToString()
             for each in self._suggester.lookup(word, 10, False, False)

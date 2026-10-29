@@ -394,3 +394,17 @@ async def test_commit_task_survives_an_error():
     assert not task.done()
     assert Target.calls > 1
     task.cancel()
+
+
+async def test_suggest_on_empty_index(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="keywords", suggest=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    assert index.suggest("keywords", "ro") == []
