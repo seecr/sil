@@ -444,3 +444,53 @@ async def test_sorting_with_several_values_uses_the_first(tmp_path):
 
     results = index.search_query("value", sort=[dict(field="authors")])
     assert [hit["__id__"] for hit in results["docs"]] == ["id_2", "id_1"]
+
+
+async def test_invalid_query_syntax_is_searched_literally(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [IndexField.text(name="title"), IndexField.unqualified(name="ALL")]
+        ),
+        immediate_commit=True,
+    )
+    index.add_record("id_1", dict(title="rock", ALL="rock and roll"))
+
+    for query in ['"rock', "rock)", "rock:", "(rock"]:
+        assert index.search_query(query)["count"] == 1, query
+
+
+async def test_search_while_committing_in_another_thread(tmp_path):
+    import threading
+
+    from .utils import ensure_current_thread_attached
+
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="year", drilldown=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    index.add_record("id_0", dict(year="2000", ALL="value"))
+    errors = []
+
+    def search():
+        ensure_current_thread_attached()
+        try:
+            for _ in range(200):
+                index.search_query("value", drilldown=[dict(name="year")])
+        except Exception as e:
+            errors.append(e)
+
+    thread = threading.Thread(target=search)
+    thread.start()
+    for nr in range(1, 50):  # every add commits and refreshes the readers
+        index.add_record(f"id_{nr}", dict(year=str(2000 + nr % 5), ALL="value"))
+    thread.join()
+
+    assert errors == []
+    assert index.search_query("value")["count"] == 50

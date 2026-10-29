@@ -22,6 +22,8 @@
 #
 ## end license ##
 
+import threading
+
 from .utils import as_directory, mkdir
 
 from org.apache.lucene.facet import (
@@ -42,6 +44,7 @@ class Drilldown:
         self._path = as_directory(mkdir(path / "taxo"))
         self._writer = DirectoryTaxonomyWriter(self._path)
         self._facets_config = FacetsConfig()
+        self._reader_lock = threading.Lock()  # opening and refreshing the reader
         # a document may have several values for a drilldown field; without this
         # Lucene refuses such a document. The counts per value stay the same.
         for dimension in dimensions:
@@ -54,7 +57,7 @@ class Drilldown:
 
     def close(self):
         if self._reader is not None:
-            self._reader.close()
+            self._reader.decRef()
             self._reader = None
         self._writer.close()
 
@@ -62,19 +65,33 @@ class Drilldown:
     def reader(self):
         """One reader for all searches, refreshed after a commit. Opening a new reader
         for every search (and never closing it) leaked files and memory."""
-        if self._reader is None:
-            try:
-                self._reader = DirectoryTaxonomyReader(self._path)
-            except JavaError:
-                return None  # nothing committed yet
-        return self._reader
+        with self._reader_lock:
+            if self._reader is None:
+                try:
+                    self._reader = DirectoryTaxonomyReader(self._path)
+                except JavaError:
+                    return None  # nothing committed yet
+            return self._reader
 
     def _refresh_reader(self):
-        if self._reader is None:
-            return  # opened on first use
-        if (new_reader := TaxonomyReader.openIfChanged(self._reader)) is not None:
-            old_reader, self._reader = self._reader, new_reader
-            old_reader.close()
+        with self._reader_lock:
+            if self._reader is None:
+                return  # opened on first use
+            new_reader = TaxonomyReader.openIfChanged(self._reader)
+            if new_reader is not None:
+                old_reader, self._reader = self._reader, new_reader
+                # closed once no search uses it any more (see _acquire_reader)
+                old_reader.decRef()
+
+    def _acquire_reader(self):
+        """The current reader with its reference count raised, so a refresh in
+        another thread does not close it during a search; give it back with
+        decRef()."""
+        while (reader := self.reader) is not None:
+            if reader.tryIncRef():
+                return reader
+            # closed by a refresh between reading self._reader and tryIncRef: retry
+        return None
 
     @property
     def writer(self):
@@ -87,20 +104,22 @@ class Drilldown:
         collector = FacetsCollector()
         searcher.search(query, collector)
 
-        if (reader := self.reader) is None:
+        if (reader := self._acquire_reader()) is None:
             return {}
+        try:
+            facets = FastTaxonomyFacetCounts(reader, self._facets_config, collector)
 
-        facets = FastTaxonomyFacetCounts(reader, self._facets_config, collector)
+            results = {}
+            for field in drilldown:
+                name = field["name"]
+                count = field.get("count", 10)
 
-        results = {}
-        for field in drilldown:
-            name = field["name"]
-            count = field.get("count", 10)
-
-            if (
-                facet_result := facets.getTopChildren(count, f"facet_{name}")
-            ) is not None:
-                results[name] = [
-                    (i.label, i.value.intValue()) for i in facet_result.labelValues
-                ]
-        return results
+                if (
+                    facet_result := facets.getTopChildren(count, f"facet_{name}")
+                ) is not None:
+                    results[name] = [
+                        (i.label, i.value.intValue()) for i in facet_result.labelValues
+                    ]
+            return results
+        finally:
+            reader.decRef()

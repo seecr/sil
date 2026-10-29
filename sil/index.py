@@ -32,7 +32,9 @@ from org.apache.lucene.search import (
     Sort,
 )
 
-from org.apache.lucene.queryparser.classic import QueryParser
+from org.apache.lucene.queryparser.classic import QueryParser, QueryParserBase
+
+from lucene import JavaError
 
 from .lucene import Lucene
 from .commit import Commit
@@ -138,7 +140,13 @@ class Index:
 
         skipRecords = (page - 1) * limit
 
-        searcher = self._lucene.searcher
+        searcher = self._lucene.acquire_searcher()
+        try:
+            return self._search(searcher, query, skipRecords, limit, sort, drilldown)
+        finally:
+            self._lucene.release_searcher(searcher)
+
+    def _search(self, searcher, query, skipRecords, limit, sort, drilldown):
         sorting = Sort.RELEVANCE
         if sort is not None:
             if isinstance(sort, str):
@@ -201,7 +209,15 @@ class Index:
             query = MatchAllDocsQuery()
         else:
             parser = QueryParser(self._profile.unqualified.name, self._lucene.analyzer)
-            query = parser.parse(str(query))
+            try:
+                query = parser.parse(str(query))
+            except JavaError:
+                # not valid query syntax (e.g. a single quote from a search box):
+                # search for the text literally
+                try:
+                    query = parser.parse(QueryParserBase.escape(str(query)))
+                except JavaError as e:
+                    raise ValueError(f"Invalid query: {query!r}") from e
         return query
 
     def search_query(self, query, *args, **kwargs):
