@@ -103,7 +103,7 @@ async def test_sorting_non_sortable_field(tmp_path):
     with pytest.raises(RuntimeError) as e:
         index.search_query("value", sort=[dict(field="field")])
 
-    assert repr(e) == "<ExceptionInfo RuntimeError('Unsortable field: field') tblen=3>"
+    assert str(e.value) == "Unsortable field: field"
 
 
 async def test_sorting_non_existing_field(tmp_path):
@@ -122,7 +122,7 @@ async def test_sorting_non_existing_field(tmp_path):
     with pytest.raises(RuntimeError) as e:
         index.search_query("value", sort=[dict(field="error")])
 
-    assert repr(e) == "<ExceptionInfo RuntimeError('Unknown field: error') tblen=3>"
+    assert str(e.value) == "Unknown field: error"
 
 
 async def test_sorting(tmp_path):
