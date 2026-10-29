@@ -53,7 +53,14 @@ class Index:
 
         self._index_path = mkdir(path / "index")
         self._lucene = Lucene(self._index_path)
-        self._drilldown = Drilldown(path)
+        self._drilldown = Drilldown(
+            path,
+            dimensions=[
+                field.facet_dimension
+                for field in self._profile.fields
+                if field.is_drilldown
+            ],
+        )
 
         # the taxonomy is committed before the index, so a refreshed index reader
         # never refers to categories that are not committed yet

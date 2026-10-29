@@ -38,10 +38,14 @@ from lucene import JavaError
 
 
 class Drilldown:
-    def __init__(self, path):
+    def __init__(self, path, dimensions=()):
         self._path = as_directory(mkdir(path / "taxo"))
         self._writer = DirectoryTaxonomyWriter(self._path)
         self._facets_config = FacetsConfig()
+        # a document may have several values for a drilldown field; without this
+        # Lucene refuses such a document. The counts per value stay the same.
+        for dimension in dimensions:
+            self._facets_config.setMultiValued(dimension, True)
         self._reader = None
 
     def commit(self):

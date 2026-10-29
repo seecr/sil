@@ -408,3 +408,39 @@ async def test_suggest_on_empty_index(tmp_path):
         immediate_commit=True,
     )
     assert index.suggest("keywords", "ro") == []
+
+
+async def test_drilldown_with_several_values(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="keywords", drilldown=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    index.add_record("id_1", dict(keywords=["rock", "paper"], ALL="value"))
+    index.add_record("id_2", dict(keywords=["rock"], ALL="value"))
+
+    results = index.search_all(drilldown=[dict(name="keywords")])
+    assert results["drilldown"]["keywords"] == [("rock", 2), ("paper", 1)]
+
+
+async def test_sorting_with_several_values_uses_the_first(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="authors", sortable=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    index.add_record("id_1", dict(authors=["Noot", "Aap"], ALL="value"))
+    index.add_record("id_2", dict(authors=["Mies"], ALL="value"))
+
+    results = index.search_query("value", sort=[dict(field="authors")])
+    assert [hit["__id__"] for hit in results["docs"]] == ["id_2", "id_1"]

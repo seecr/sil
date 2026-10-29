@@ -67,7 +67,7 @@ class IndexField:
             return [TextField(self._name, values_as_text, Field.Store.NO)]
 
         field_values = []
-        for value in values:
+        for nr, value in enumerate(values):
             field_values.append(
                 self._fieldtype(
                     self._name,
@@ -75,7 +75,8 @@ class IndexField:
                     Field.Store.YES if self._stored else Field.Store.NO,
                 )
             )
-            if self._sortable:
+            # a sort field allows one value per document: sort on the first one
+            if self._sortable and nr == 0:
                 if self._fieldtype == IntField:
                     field_values.append(
                         NumericDocValuesField(f"sort_{self._name}", value)
@@ -85,7 +86,7 @@ class IndexField:
                         SortedDocValuesField(f"sort_{self._name}", BytesRef(value))
                     )
             if self._drilldown and value:
-                field_values.append(FacetField(f"facet_{self._name}", value))
+                field_values.append(FacetField(self.facet_dimension, value))
 
         return field_values
 
@@ -98,6 +99,10 @@ class IndexField:
     @property
     def name(self):
         return self._name
+
+    @property
+    def facet_dimension(self):
+        return f"facet_{self._name}"
 
     @property
     def is_sortable(self):
