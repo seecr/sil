@@ -328,3 +328,69 @@ async def test_sortfields(tmp_path):
         immediate_commit=True,
     )
     assert index.sortfields == ["keywords"]
+
+
+async def test_drilldown_reuses_taxonomy_reader(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="year", drilldown=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    index.add_record("id_1", dict(year="2025", ALL="value"))
+
+    results = index.search_all(drilldown=[dict(name="year")])
+    assert results["drilldown"]["year"] == [("2025", 1)]
+    reader = index._drilldown.reader
+    index.search_all(drilldown=[dict(name="year")])
+    assert index._drilldown.reader is reader
+
+    # a new category after a commit: the reader is refreshed and sees it
+    index.add_record("id_2", dict(year="2024", ALL="value"))
+    results = index.search_all(drilldown=[dict(name="year")])
+    assert sorted(results["drilldown"]["year"]) == [("2024", 1), ("2025", 1)]
+
+
+async def test_suggest_without_duplicates_and_cleared_by_delete_all(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="keywords", suggest=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    for _ in range(3):  # the same record indexed again
+        index.add_record("id_1", dict(keywords=["rock"], ALL="value"))
+    assert index.suggest("keywords", "ro") == ["rock"]
+
+    index.delete_all()
+    assert index.suggest("keywords", "ro") == []
+
+
+async def test_commit_task_survives_an_error():
+    import asyncio
+
+    from .commit import Commit
+
+    class Target:
+        calls = 0
+
+        def commit(self):
+            Target.calls += 1
+            if Target.calls == 1:
+                raise RuntimeError("disk full")
+
+    commit = Commit(timeout=0.01)
+    commit.add_target(Target())
+    task = commit.as_task()
+    await asyncio.sleep(0.1)
+    assert not task.done()
+    assert Target.calls > 1
+    task.cancel()

@@ -30,17 +30,31 @@ from org.apache.lucene.analysis.standard import StandardAnalyzer
 
 from java.util import HashSet
 
+import shutil
+
 
 class Suggester:
     def __init__(self, path, name):
+        self._path = path / name
+        self._open()
+
+    def _open(self):
         self._suggester = AnalyzingInfixSuggester(
-            as_directory(mkdir(path / name)), StandardAnalyzer()
+            as_directory(mkdir(self._path)), StandardAnalyzer()
         )
         self._dirty = False
 
     def add(self, word):
-        self._suggester.add(BytesRef(word), HashSet(), 1, BytesRef(word))
+        # update() replaces an existing entry for the same word; add() made a
+        # duplicate every time a record was indexed again
+        self._suggester.update(BytesRef(word), HashSet(), 1, BytesRef(word))
         self._dirty = True
+
+    def clear(self):
+        """Remove all suggestions (used before rebuilding the index)."""
+        self._suggester.close()
+        shutil.rmtree(self._path)
+        self._open()
 
     def suggest(self, word):
         if self._dirty:

@@ -23,6 +23,9 @@
 ## end license ##
 
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Commit:
@@ -39,7 +42,11 @@ class Commit:
 
     async def _watch(self):
         while True:
-            self.do()
+            try:
+                self.do()
+            except Exception:
+                # keep committing: an uncaught error would end this task silently
+                logger.exception("Commit failed; retrying after the timeout")
             await asyncio.sleep(self._timeout)
 
     def as_task(self):

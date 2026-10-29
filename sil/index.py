@@ -53,10 +53,12 @@ class Index:
 
         self._index_path = mkdir(path / "index")
         self._lucene = Lucene(self._index_path)
-        self._commit.add_target(self._lucene)
-
         self._drilldown = Drilldown(path)
+
+        # the taxonomy is committed before the index, so a refreshed index reader
+        # never refers to categories that are not committed yet
         self._commit.add_target(self._drilldown)
+        self._commit.add_target(self._lucene)
 
         self._suggesters = {}
 
@@ -120,6 +122,8 @@ class Index:
     def delete_all(self):
         ensure_current_thread_attached()
         self._lucene.writer.deleteAll()
+        for suggester in self._suggesters.values():
+            suggester.clear()
         self.commit()
 
     def search(self, query, page=1, limit=20, sort=None, drilldown=None):

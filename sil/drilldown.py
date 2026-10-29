@@ -28,7 +28,7 @@ from org.apache.lucene.facet import (
     FacetsConfig,
     FacetsCollector,
 )
-from org.apache.lucene.facet.taxonomy import FastTaxonomyFacetCounts
+from org.apache.lucene.facet.taxonomy import FastTaxonomyFacetCounts, TaxonomyReader
 from org.apache.lucene.facet.taxonomy.directory import (
     DirectoryTaxonomyWriter,
     DirectoryTaxonomyReader,
@@ -42,19 +42,35 @@ class Drilldown:
         self._path = as_directory(mkdir(path / "taxo"))
         self._writer = DirectoryTaxonomyWriter(self._path)
         self._facets_config = FacetsConfig()
+        self._reader = None
 
     def commit(self):
         self._writer.commit()
+        self._refresh_reader()
 
     def close(self):
+        if self._reader is not None:
+            self._reader.close()
+            self._reader = None
         self._writer.close()
 
     @property
     def reader(self):
-        try:
-            return DirectoryTaxonomyReader(self._path)
-        except JavaError:
-            return None
+        """One reader for all searches, refreshed after a commit. Opening a new reader
+        for every search (and never closing it) leaked files and memory."""
+        if self._reader is None:
+            try:
+                self._reader = DirectoryTaxonomyReader(self._path)
+            except JavaError:
+                return None  # nothing committed yet
+        return self._reader
+
+    def _refresh_reader(self):
+        if self._reader is None:
+            return  # opened on first use
+        if (new_reader := TaxonomyReader.openIfChanged(self._reader)) is not None:
+            old_reader, self._reader = self._reader, new_reader
+            old_reader.close()
 
     @property
     def writer(self):
