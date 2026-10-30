@@ -279,10 +279,12 @@ class Index:
         query, constant_score = _unwrap(query)
         sort_keys = self._sort_keys(sort)
         offset = (page - 1) * limit
-        wanted = offset + limit
 
         # a snapshot of the index: a commit in another thread does not affect it
         searcher = self._engine.searcher()
+        # tantivy reserves room for as many hits as asked for; never more than
+        # there are documents (Lucene capped it the same way)
+        wanted = min(offset + limit, searcher.num_docs)
 
         if sort_keys or constant_score:
             # a constant score orders on age only, like sorting on no field at all
@@ -383,6 +385,8 @@ class Index:
             order=tantivy.Order.Desc if reverse else tantivy.Order.Asc,
         )
         hits, total = result.hits[:wanted], result.count
+        if wanted == 0:
+            return [], total
         if len(hits) < wanted:  # all of them
             return self._sort_in_python(searcher, hits, sort_keys), total
 

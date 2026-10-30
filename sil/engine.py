@@ -30,8 +30,8 @@ import tantivy
 
 logger = logging.getLogger(__name__)
 
-# The writer buffers this much before it flushes a segment by itself. One thread
-# per writer: there is an index per model, so their memory adds up.
+# The writer buffers this much before it flushes a segment by itself. One indexing
+# thread per writer: there is an index per model, so their memory adds up.
 WRITER_HEAP_SIZE = 15_000_000
 
 
@@ -41,6 +41,12 @@ class Engine:
     Searches only see committed changes, as before. A searcher is a snapshot of
     the index: a commit in another thread never disturbs a running search, so
     there is no searcher manager or reference counting.
+
+    The writer is opened on the first change, not before: a tantivy writer runs
+    about six threads of its own (indexing, merging, ...) and each thread costs
+    memory. With an index per model (and per suggest field), most of which are
+    only read, opening them all up front adds up quickly; e.g. in tests run in
+    parallel processes.
     """
 
     def __init__(self, path, schema, heap_size=WRITER_HEAP_SIZE):
@@ -67,7 +73,9 @@ class Engine:
         # Reload explicitly after a commit, so a search right after a commit sees it
         # (the "OnCommit" policy reloads asynchronously, a little later).
         self._index.config_reader("Manual")
-        self._writer = self._index.writer(heap_size, 1)
+        self._heap_size = heap_size
+        self._writer = None  # opened on the first change
+        self._closed = False
         # the writer is one object shared by all threads: one call at a time
         self._lock = threading.Lock()
         self._dirty = False
@@ -80,19 +88,27 @@ class Engine:
     def schema(self):
         return self._schema
 
+    def _get_writer(self):
+        """The writer, opened if needed (call with self._lock held)."""
+        if self._closed:
+            raise RuntimeError(f"Index {self._path} is shut down")
+        if self._writer is None:
+            self._writer = self._index.writer(self._heap_size, 1)
+        return self._writer
+
     def add_document(self, doc):
         with self._lock:
-            self._writer.add_document(doc)
+            self._get_writer().add_document(doc)
             self._dirty = True
 
     def delete_term(self, field_name, value):
         with self._lock:
-            self._writer.delete_documents_by_term(field_name, value)
+            self._get_writer().delete_documents_by_term(field_name, value)
             self._dirty = True
 
     def delete_all(self):
         with self._lock:
-            self._writer.delete_all_documents()
+            self._get_writer().delete_all_documents()
             self._dirty = True
 
     def has_uncommitted_changes(self):
@@ -112,6 +128,7 @@ class Engine:
 
     def shutdown(self):
         with self._lock:
+            self._closed = True
             if self._writer is None:
                 return
             logger.info(f"Committing and closing writer for {self._path}")

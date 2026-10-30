@@ -760,3 +760,50 @@ async def test_sorting_matches_sorting_everything(tmp_path):
             for page in range(1, 300 // limit + 2):
                 paged += _ids(index.search_all(sort=sort, page=page, limit=limit))
             assert paged == expected, (sort, limit)
+
+
+async def test_large_limit_and_pages_past_the_end(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="name", sortable=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    assert index.search_all(limit=10**12)["count"] == 0
+    for nr in range(3):
+        index.add_record(f"id_{nr}", dict(name=f"n{nr}", ALL="value"))
+
+    for search in (
+        lambda **kw: index.search_all(**kw),
+        lambda **kw: index.search_query("value", **kw),
+        lambda **kw: index.search_query("value", sort="name", **kw),
+    ):
+        assert _ids(search(limit=10**12)) == ["id_0", "id_1", "id_2"]
+        result = search(page=5, limit=2)
+        assert (result["count"], result["docs"]) == (3, [])
+        assert search(limit=0)["docs"] == []
+
+
+async def test_writer_opened_on_first_change(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="k", suggest=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    assert index._engine._writer is None
+    assert index.search_query("value")["count"] == 0
+    assert index._engine._writer is None
+    index.add_record("id_1", dict(k="a", ALL="value"))
+    assert index._engine._writer is not None
+    index.shutdown()
+    with pytest.raises(RuntimeError):
+        index.add_record("id_2", dict(ALL="value"))
