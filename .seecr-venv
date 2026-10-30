@@ -1,3 +1,0 @@
-JDK=zulu21
-export LD_LIBRARY_PATH=/usr/lib/jvm/${JDK}/lib:/usr/lib/jvm/${JDK}/lib/server:$(find ${VIRTUAL_ENV} -name "site-packages")
-echo "Setting LD_LIBRARY_PATH"
