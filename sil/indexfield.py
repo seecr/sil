@@ -22,21 +22,21 @@
 #
 ## end license ##
 
-from org.apache.lucene.document import (
-    Field,
-    SortedDocValuesField,
-    NumericDocValuesField,
-    StringField,
-    TextField,
-    IntField,
-)
-from org.apache.lucene.search import SortField
-from org.apache.lucene.util import BytesRef
-from org.apache.lucene.facet import FacetField
+# The kinds of field. These replace the Lucene field classes (StringField,
+# TextField and IntField) that used to be passed as fieldtype.
+UNTOKENIZED = "untokenized"  # the value as one term, exact match only
+TEXT = "text"  # the value split into lowercased words
+INT = "int"  # a (64 bit) integer
+
+# StandardAnalyzer in Lucene; tantivy's "default" tokenizer is the closest: it
+# splits on everything that is not a letter or a digit and lowercases
+TEXT_TOKENIZER = "default"
+UNTOKENIZED_TOKENIZER = "raw"
 
 
 class IndexField:
     ID_FIELD = "__id__"
+    SEQ_FIELD = "__seq__"  # insertion order: orders hits that otherwise tie
 
     def __init__(
         self,
@@ -48,6 +48,8 @@ class IndexField:
         drilldown=False,
         suggest=False,
     ):
+        if fieldtype not in (UNTOKENIZED, TEXT, INT):
+            raise ValueError(f"Unknown field type: {fieldtype!r}")
         self._name = name
         self._fieldtype = fieldtype
         self._stored = stored
@@ -56,45 +58,84 @@ class IndexField:
         self._unqualified = unqualified
         self._suggest = suggest
 
-    def as_doc_field(self, values):
+    def add_to_schema(self, builder):
+        if self._unqualified:
+            builder.add_text_field(self._name, tokenizer_name=TEXT_TOKENIZER)
+            return
+
+        if self._fieldtype == INT:
+            builder.add_integer_field(self._name, stored=self._stored, indexed=True)
+        else:
+            builder.add_text_field(
+                self._name,
+                stored=self._stored,
+                tokenizer_name=(
+                    TEXT_TOKENIZER if self._fieldtype == TEXT else UNTOKENIZED_TOKENIZER
+                ),
+            )
+
+        if self._sortable:
+            # a fast (column) field to sort on; stored and indexed as well, for
+            # sorting on more than one field (see Index._sorted_hits)
+            if self._fieldtype == INT:
+                builder.add_integer_field(
+                    self.sort_field_name, stored=True, indexed=True, fast=True
+                )
+            else:
+                builder.add_text_field(
+                    self.sort_field_name,
+                    stored=True,
+                    fast=True,
+                    tokenizer_name=UNTOKENIZED_TOKENIZER,
+                )
+
+        if self._drilldown:
+            # counted with a terms aggregation over this fast field
+            builder.add_text_field(
+                self.facet_dimension,
+                fast=True,
+                tokenizer_name=UNTOKENIZED_TOKENIZER,
+                index_option="basic",
+            )
+
+    def add_to_doc(self, doc, values):
         if values == []:
-            return []
+            return
 
         if self._unqualified:
             values_as_text = (
                 " ".join(str(v) for v in values) if isinstance(values, list) else values
             )
-            return [TextField(self._name, values_as_text, Field.Store.NO)]
+            doc.add_text(self._name, values_as_text)
+            return
 
-        field_values = []
         for nr, value in enumerate(values):
-            field_values.append(
-                self._fieldtype(
-                    self._name,
-                    value,
-                    Field.Store.YES if self._stored else Field.Store.NO,
-                )
-            )
+            self._add_value(doc, self._name, value)
             # a sort field allows one value per document: sort on the first one
             if self._sortable and nr == 0:
-                if self._fieldtype == IntField:
-                    field_values.append(
-                        NumericDocValuesField(f"sort_{self._name}", value)
-                    )
-                else:
-                    field_values.append(
-                        SortedDocValuesField(f"sort_{self._name}", BytesRef(value))
-                    )
+                self._add_value(doc, self.sort_field_name, value)
             if self._drilldown and value:
-                field_values.append(FacetField(self.facet_dimension, value))
+                doc.add_text(self.facet_dimension, str(value))
 
-        return field_values
+    def add_missing_sort_value(self, doc):
+        """A document without a value sorts as Lucene sorted it: first (an empty
+        string) or as 0 for an int field."""
+        self._add_value(doc, self.sort_field_name, self.missing_sort_value)
 
-    def as_sort_field(self, reverse=False):
-        sort_type = SortField.Type.STRING
-        if self._fieldtype == IntField:
-            sort_type = SortField.Type.INT
-        return SortField(f"sort_{self._name}", sort_type, reverse)
+    @property
+    def missing_sort_value(self):
+        return 0 if self._fieldtype == INT else ""
+
+    def _add_value(self, doc, name, value):
+        if self._fieldtype == INT:
+            doc.add_integer(name, int(value))
+        else:
+            doc.add_text(name, str(value))
+
+    def term_value(self, value):
+        """A value as the term to look for: an int for an int field, a string
+        otherwise. A text field is not analyzed here (as a Lucene TermQuery)."""
+        return int(value) if self._fieldtype == INT else str(value)
 
     @property
     def name(self):
@@ -103,6 +144,10 @@ class IndexField:
     @property
     def facet_dimension(self):
         return f"facet_{self._name}"
+
+    @property
+    def sort_field_name(self):
+        return f"sort_{self._name}"
 
     @property
     def is_sortable(self):
@@ -124,22 +169,22 @@ class IndexField:
     def is_suggest(self):
         return self._suggest
 
-    @classmethod
-    def id_field(cls, record_id):
-        return StringField(cls.ID_FIELD, str(record_id), Field.Store.YES)
+    @property
+    def is_stored(self):
+        return self._stored
 
     @classmethod
     def untokenized(cls, name, **kwargs):
-        return cls(name, StringField, **kwargs)
+        return cls(name, UNTOKENIZED, **kwargs)
 
     @classmethod
     def text(cls, name, **kwargs):
-        return cls(name, TextField, **kwargs)
+        return cls(name, TEXT, **kwargs)
 
     @classmethod
     def int(cls, name, **kwargs):
-        return cls(name, IntField, **kwargs)
+        return cls(name, INT, **kwargs)
 
     @classmethod
     def unqualified(cls, name):
-        return cls(name, TextField, unqualified=True)
+        return cls(name, TEXT, unqualified=True)

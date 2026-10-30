@@ -38,7 +38,7 @@ async def test_create_index(tmp_path):
     assert len(list(tmp_path.glob("*"))) == 0
 
     index = Index(tmp_path, IndexProfile([]), immediate_commit=True)
-    assert set([n.name for n in tmp_path.glob("*")]) == {"index", "taxo"}
+    assert set([n.name for n in tmp_path.glob("*")]) == {"index"}
 
 
 async def test_indexfields_unqualified(tmp_path):
@@ -204,7 +204,6 @@ async def test_multi_sort(tmp_path):
     assert ids == ["id_1", "id_4", "id_2", "id_3", "id_5"]
 
 
-# Opening a DirectoryTaxonomyReader on an empty directory  raises a JavaError
 async def test_drilldown_no_records(tmp_path):
     index = Index(
         path=tmp_path,
@@ -246,12 +245,12 @@ async def test_drilldown(tmp_path):
     results = index.search_by_term("name", "John", drilldown=[dict(name="year")])
     assert results["count"] == 2
     assert "year" in results["drilldown"]
-    assert results["drilldown"]["year"] == [("2025", 1), ("2024", 1)]
+    assert results["drilldown"]["year"] == [("2024", 1), ("2025", 1)]
 
     results = index.search_query("+value +john", drilldown=[dict(name="year")])
     assert results["count"] == 2
     assert "year" in results["drilldown"]
-    assert results["drilldown"]["year"] == [("2025", 1), ("2024", 1)]
+    assert results["drilldown"]["year"] == [("2024", 1), ("2025", 1)]
 
     results = index.search_query("value john", drilldown=[dict(name="year")])
     assert results["count"] == 3
@@ -261,7 +260,7 @@ async def test_drilldown(tmp_path):
     index.delete_record("id_3")
     results = index.search_all(drilldown=[dict(name="year")])
     assert "year" in results["drilldown"]
-    assert results["drilldown"]["year"] == [("2025", 1), ("2024", 1)]
+    assert results["drilldown"]["year"] == [("2024", 1), ("2025", 1)]
 
 
 async def test_drilldown_empty_paths(tmp_path):
@@ -330,7 +329,7 @@ async def test_sortfields(tmp_path):
     assert index.sortfields == ["keywords"]
 
 
-async def test_drilldown_reuses_taxonomy_reader(tmp_path):
+async def test_drilldown_sees_new_values_after_a_commit(tmp_path):
     index = Index(
         path=tmp_path,
         profile=IndexProfile(
@@ -345,14 +344,10 @@ async def test_drilldown_reuses_taxonomy_reader(tmp_path):
 
     results = index.search_all(drilldown=[dict(name="year")])
     assert results["drilldown"]["year"] == [("2025", 1)]
-    reader = index._drilldown.reader
-    index.search_all(drilldown=[dict(name="year")])
-    assert index._drilldown.reader is reader
 
-    # a new category after a commit: the reader is refreshed and sees it
     index.add_record("id_2", dict(year="2024", ALL="value"))
     results = index.search_all(drilldown=[dict(name="year")])
-    assert sorted(results["drilldown"]["year"]) == [("2024", 1), ("2025", 1)]
+    assert results["drilldown"]["year"] == [("2024", 1), ("2025", 1)]
 
 
 async def test_suggest_without_duplicates_and_cleared_by_delete_all(tmp_path):
@@ -494,3 +489,274 @@ async def test_search_while_committing_in_another_thread(tmp_path):
 
     assert errors == []
     assert index.search_query("value")["count"] == 50
+
+
+def _ids(results):
+    return [hit["__id__"] for hit in results["docs"]]
+
+
+async def test_prefix_query(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.text(name="title"),
+                IndexField.untokenized(name="name"),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    index.add_record("id_1", dict(title="Rock and Roll", name="John", ALL="rock"))
+    index.add_record("id_2", dict(title="Rocket", name="Jane", ALL="rocket"))
+
+    assert _ids(index.search_query("roc*")) == ["id_1", "id_2"]
+    assert _ids(index.search_query("ROCK*")) == ["id_1", "id_2"]
+    assert _ids(index.search_query("title:rock*")) == ["id_1", "id_2"]
+    assert _ids(index.search_query("title:rocke*")) == ["id_2"]
+    assert _ids(index.search_query("name:Jo*")) == ["id_1"]
+    assert _ids(index.search_query('"rock*"')) == ["id_1"]  # not in a phrase
+
+
+async def test_query_language(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="name"),
+                IndexField.int(name="number"),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    index.add_record("id_1", dict(name="John", number=1, ALL="rock and roll"))
+    index.add_record("id_2", dict(name="Jane", number=2, ALL="rock"))
+
+    assert _ids(index.search_query("name:John")) == ["id_1"]
+    assert _ids(index.search_query("number:2")) == ["id_2"]
+    assert _ids(index.search_query("number:[1 TO 2]")) == ["id_1", "id_2"]
+    assert _ids(index.search_query("rock -roll")) == ["id_2"]
+    assert _ids(index.search_query('"and roll"')) == ["id_1"]
+    assert _ids(index.search_query("*")) == ["id_1", "id_2"]
+    # an unknown field: searched literally
+    assert index.search_query("unknown:rock")["count"] == 2
+
+
+async def test_search_by_term(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="name"),
+                IndexField.int(name="number"),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    index.add_record("id_1", dict(name="John", number=1, ALL="value"))
+    index.add_record("id_2", dict(name="Jane", number=2, ALL="value"))
+
+    assert _ids(index.search_by_term("number", 2)) == ["id_2"]
+    assert _ids(index.search_by_term("number", "2")) == ["id_2"]
+    assert _ids(index.search_by_term("name", "Jane")) == ["id_2"]
+    assert index.search_by_term("unknown", "Jane")["count"] == 0
+    assert _ids(index.search_by_id("id_1")) == ["id_1"]
+
+    query = index.all_of(index.parse_query("value"), index.term_query("name", "John"))
+    assert _ids(index.search(query)) == ["id_1"]
+
+
+async def test_stored_fields(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="__id__"),  # as swindl does
+                IndexField.untokenized(name="tags", stored=True),
+                IndexField.text(name="secret"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    index.add_record("Thing:1", {"__id__": "1", "tags": ["a", "b"], "secret": "x"})
+
+    [hit] = index.search_all()["docs"]
+    assert hit == {"__id__": "Thing:1", "tags": "a"}
+    assert hit.get_values("tags") == ["a", "b"]
+    assert _ids(index.search_by_term("__id__", "1")) == ["Thing:1"]
+
+    index.add_record("Thing:1", {"__id__": "1", "tags": ["c"]})
+    assert index.search_all()["count"] == 1
+    index.delete_record("Thing:1")
+    assert index.search_all()["count"] == 0
+
+
+async def test_paging_sorted_with_equal_values(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="group", sortable=True),
+                IndexField.int(name="number", sortable=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    for nr in range(20):
+        index.add_record(
+            f"id_{nr:02}", dict(group="ab"[nr % 2], number=nr % 3, ALL="value")
+        )
+    index.add_record("id_none", dict(ALL="value"))  # sorts first, as in Lucene
+
+    sort = [dict(field="group"), dict(field="number", reverse=True)]
+    everything = _ids(index.search_query("value", sort=sort, limit=100))
+    paged = []
+    for page in range(1, 6):
+        paged += _ids(index.search_query("value", sort=sort, page=page, limit=5))
+    assert paged == everything
+    assert everything[:5] == ["id_none", "id_02", "id_08", "id_14", "id_04"]
+
+    paged = []
+    for page in range(1, 4):
+        paged += _ids(index.search_all(page=page, limit=8))
+    assert paged == sorted(paged[:-1]) + ["id_none"]
+
+
+async def test_paging_with_equal_scores_oldest_first(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile([IndexField.unqualified(name="ALL")]),
+        immediate_commit=True,
+    )
+    for nr in range(25):
+        index.add_record(f"id_{nr:02}", dict(ALL="value"))
+    index.add_record("id_05", dict(ALL="value"))  # updated: now the newest
+
+    paged = []
+    for page in range(1, 5):
+        paged += _ids(index.search_query("value", page=page, limit=7))
+    expected = [f"id_{nr:02}" for nr in range(25) if nr != 5] + ["id_05"]
+    assert paged == expected
+
+
+async def test_reopen_and_changed_profile(tmp_path):
+    profile = IndexProfile(
+        [IndexField.text(name="title"), IndexField.unqualified(name="ALL")]
+    )
+    index = Index(tmp_path, profile, immediate_commit=True)
+    index.add_record("id_1", dict(title="rock", ALL="rock"))
+    index.shutdown()
+
+    index = Index(tmp_path, profile, immediate_commit=True)
+    assert not index.needs_reindex
+    assert index.search_query("rock")["count"] == 1
+    index.shutdown()
+
+    profile = IndexProfile(
+        [
+            IndexField.text(name="title", sortable=True),
+            IndexField.unqualified(name="ALL"),
+        ]
+    )
+    index = Index(tmp_path, profile, immediate_commit=True)
+    assert index.needs_reindex
+    assert index.search_query("rock")["count"] == 0
+
+
+async def test_shutdown_commits(tmp_path):
+    profile = IndexProfile([IndexField.unqualified(name="ALL")])
+    index = Index(tmp_path, profile, commit_timeout=0)
+    index.add_record("id_1", dict(ALL="rock"))
+    assert index.search_query("rock")["count"] == 0  # not committed yet
+    index.shutdown()
+
+    index = Index(tmp_path, profile, commit_timeout=0)
+    assert index.search_query("rock")["count"] == 1
+
+
+async def test_suggest_infix(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile([IndexField.untokenized(name="place", suggest=True)]),
+        immediate_commit=True,
+    )
+    index.add_record("id_1", dict(place="New York"))
+    index.add_record("id_2", dict(place="York"))
+    index.add_record("id_3", dict(place="Newcastle"))
+
+    assert index.suggest("place", "yo") == ["New York", "York"]
+    assert index.suggest("place", "new") == ["New York", "Newcastle"]
+    assert index.suggest("place", "new yo") == ["New York", "York"]
+
+
+async def test_listings_in_insertion_order(tmp_path):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="parent"),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=True,
+    )
+    for nr in range(30):
+        index.add_record(f"id_{nr:02}", dict(parent="p1", ALL="value"))
+    expected = [f"id_{nr:02}" for nr in range(30)]
+
+    paged = []
+    for page in range(1, 5):
+        paged += _ids(index.search_by_term("parent", "p1", page=page, limit=8))
+    assert paged == expected
+
+    query = index.all_of(index.parse_query("*"), index.term_query("parent", "p1"))
+    assert _ids(index.search(query, limit=100)) == expected
+
+
+async def test_sorting_matches_sorting_everything(tmp_path):
+    import random
+
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="a", sortable=True),
+                IndexField.int(name="b", sortable=True),
+                IndexField.untokenized(name="c", sortable=True),
+                IndexField.unqualified(name="ALL"),
+            ]
+        ),
+        immediate_commit=False,
+        commit_timeout=0,
+    )
+    rnd = random.Random(42)
+    records = {}
+    for nr in range(300):
+        data = dict(a=rnd.choice("xyz"), b=rnd.randint(0, 3), c=rnd.choice("pq"))
+        if nr % 17 == 0:
+            del data["a"]
+        records[f"id_{nr:03}"] = data
+        index.add_record(f"id_{nr:03}", dict(data, ALL="value"))
+    index.commit(immediate_commit=True)
+
+    order = list(records)  # insertion order
+    for sort in (
+        [dict(field="a")],
+        [dict(field="a", reverse=True), dict(field="b")],
+        [dict(field="b", reverse=True), dict(field="c"), dict(field="a")],
+    ):
+        expected = sorted(order)  # ids in insertion order
+        for key in reversed(sort):
+            missing = 0 if key["field"] == "b" else ""
+            expected.sort(
+                key=lambda i: records[i].get(key["field"], missing),
+                reverse=key.get("reverse", False),
+            )
+        for limit in (7, 50):
+            paged = []
+            for page in range(1, 300 // limit + 2):
+                paged += _ids(index.search_all(sort=sort, page=page, limit=limit))
+            assert paged == expected, (sort, limit)

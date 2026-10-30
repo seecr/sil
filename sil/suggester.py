@@ -2,7 +2,7 @@
 #
 # "SIL"(Seecr Index Lib) makes developing index apps easier
 #
-# Copyright (C) 2025 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2025-2026 Seecr (Seek You Too B.V.) https://seecr.nl
 #
 # This file is part of "Seecr Index Lib"
 #
@@ -22,56 +22,83 @@
 #
 ## end license ##
 
-from .utils import as_directory, mkdir
+import tantivy
 
-from org.apache.lucene.util import BytesRef
-from org.apache.lucene.search.suggest.analyzing import AnalyzingInfixSuggester
-from org.apache.lucene.analysis.standard import StandardAnalyzer
+from .engine import Engine
+from .utils import mkdir, next_seq
 
-from java.util import HashSet
+WORD = "word"  # the suggestion as it was added
+WORDS = "words"  # the suggestion split into lowercased words, to match on
+SEQ = "seq"  # when it was added: suggestions are given in that order
 
-import shutil
+# the same as the "default" tokenizer, to split what is typed the same way
+_analyzer = (
+    tantivy.TextAnalyzerBuilder(tantivy.Tokenizer.simple())
+    .filter(tantivy.Filter.remove_long(40))
+    .filter(tantivy.Filter.lowercase())
+    .build()
+)
+
+
+def _schema():
+    builder = tantivy.SchemaBuilder()
+    builder.add_text_field(WORD, stored=True, tokenizer_name="raw")
+    builder.add_text_field(WORDS, tokenizer_name="default")
+    builder.add_integer_field(SEQ, fast=True)
+    return builder.build()
 
 
 class Suggester:
-    def __init__(self, path, name):
-        self._path = path / name
-        self._open()
+    """Suggests the words added to it whose words start with what is typed, like
+    Lucene's AnalyzingInfixSuggester: "yo" suggests "New York". The last word
+    typed may be incomplete, the ones before it must match a whole word."""
 
-    def _open(self):
-        self._suggester = AnalyzingInfixSuggester(
-            as_directory(mkdir(self._path)), StandardAnalyzer()
-        )
-        self._dirty = False
+    LIMIT = 10
+
+    def __init__(self, path, name):
+        self._path = mkdir(path / name)
+        self._schema = _schema()
+        self._engine = Engine(self._path, self._schema)
 
     def add(self, word):
-        # update() replaces an existing entry for the same word; add() made a
-        # duplicate every time a record was indexed again
-        self._suggester.update(BytesRef(word), HashSet(), 1, BytesRef(word))
-        self._dirty = True
+        word = str(word)
+        # replaces an existing entry for the same word: no duplicates when a record
+        # is indexed again
+        self._engine.delete_term(WORD, word)
+        doc = tantivy.Document()
+        doc.add_text(WORD, word)
+        doc.add_text(WORDS, word)
+        doc.add_integer(SEQ, next_seq())
+        self._engine.add_document(doc)
 
     def clear(self):
         """Remove all suggestions (used before rebuilding the index)."""
-        self._suggester.close()
-        shutil.rmtree(self._path)
-        self._open()
+        self._engine.delete_all()
 
     def suggest(self, word):
-        if self._dirty:
-            self._suggester.refresh()
-            self._dirty = False
+        if not (tokens := _analyzer.analyze(str(word))):
+            return []
 
-        if self._suggester.getCount() == 0:
-            return []  # lookup() raises "suggester was not built" while it is empty
+        *complete, last = tokens
+        queries = [tantivy.Query.term_query(self._schema, WORDS, t) for t in complete]
+        # tokens are letters and digits only, nothing to escape in the regex
+        queries.append(tantivy.Query.regex_query(self._schema, WORDS, f"{last}.*"))
+        query = tantivy.Query.boolean_query(
+            [(tantivy.Occur.Should, query) for query in queries]
+        )
 
-        return [
-            each.payload.utf8ToString()
-            for each in self._suggester.lookup(word, 10, False, False)
-        ]
+        searcher = self._engine.searcher()
+        result = searcher.search(
+            query,
+            limit=self.LIMIT,
+            count=False,
+            order_by_field=SEQ,
+            order=tantivy.Order.Asc,
+        )
+        return [searcher.doc(address)[WORD][0] for _, address in result.hits]
 
     def commit(self):
-        if self._dirty:
-            self._suggester.commit()
+        self._engine.commit()
 
     def close(self):
-        self._suggester.close()
+        self._engine.shutdown()

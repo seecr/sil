@@ -2,7 +2,7 @@
 #
 # "SIL"(Seecr Index Lib) makes developing index apps easier
 #
-# Copyright (C) 2025 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2025-2026 Seecr (Seek You Too B.V.) https://seecr.nl
 #
 # This file is part of "Seecr Index Lib"
 #
@@ -22,20 +22,28 @@
 #
 ## end license ##
 
-import lucene
-from org.apache.lucene.store import FSDirectory
-from java.nio.file import Paths
+import threading
+import time
 
 
 def ensure_current_thread_attached():
-    if (vmEnv := lucene.getVMEnv()).isCurrentThreadAttached() is False:
-        vmEnv.attachCurrentThread()
-
-
-def as_directory(path):
-    return FSDirectory.open(Paths.get(path.as_posix()))
+    """Kept for compatibility: with Lucene every thread had to be attached to the
+    JVM. Tantivy needs nothing like that."""
 
 
 def mkdir(path):
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+_seq_lock = threading.Lock()
+_last_seq = 0
+
+
+def next_seq():
+    """An always increasing number (nanoseconds since the epoch, made unique)
+    that records the order in which documents were added."""
+    global _last_seq
+    with _seq_lock:
+        _last_seq = max(time.time_ns(), _last_seq + 1)
+        return _last_seq
