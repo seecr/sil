@@ -3,3 +3,4 @@ dist/
 *.egg-info/
 sil/_version.py
 __pycache__
+build/
