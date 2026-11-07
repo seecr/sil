@@ -24,6 +24,7 @@
 
 import logging
 import re
+from contextlib import contextmanager
 
 import tantivy
 
@@ -91,6 +92,9 @@ class Index:
     def __init__(self, path, profile, commit_timeout=10, immediate_commit=False):
         self._commit = Commit(timeout=commit_timeout)
         self._immediate_commit = immediate_commit
+        # deferred_commit: how deep, and whether a commit was put off
+        self._deferred = 0
+        self._commit_pending = False
         self._profile = profile
 
         self._schema, self._field_names = self._build_schema()
@@ -160,8 +164,30 @@ class Index:
             suggester.close()
 
     def commit(self, immediate_commit=False):
-        if immediate_commit or self._immediate_commit:
+        if immediate_commit:
             self._commit.do()
+        elif self._immediate_commit:
+            if self._deferred:
+                self._commit_pending = True
+            else:
+                self._commit.do()
+
+    @contextmanager
+    def deferred_commit(self):
+        """Within this block, the commit after each change of an immediate_commit
+        index waits: there is one at the end of the (outermost) block, also when it
+        raises. Many changes, one commit (a commit takes the most time). Queries
+        within the block don't see its changes yet. An explicit commit
+        (immediate_commit=True) is not put off. Without immediate_commit nothing
+        changes: the auto-commit commits."""
+        self._deferred += 1
+        try:
+            yield
+        finally:
+            self._deferred -= 1
+            if self._deferred == 0 and self._commit_pending:
+                self._commit_pending = False
+                self._commit.do()
 
     def add_record(self, record_id, field_data):
         record_id = str(record_id)

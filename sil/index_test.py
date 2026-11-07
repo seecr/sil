@@ -807,3 +807,86 @@ async def test_writer_opened_on_first_change(tmp_path):
     index.shutdown()
     with pytest.raises(RuntimeError):
         index.add_record("id_2", dict(ALL="value"))
+
+
+class _Commits:
+    """A commit target that counts the commits of an index."""
+
+    def __init__(self):
+        self.count = 0
+
+    def commit(self):
+        self.count += 1
+
+
+def _counted_index(tmp_path, immediate_commit=True):
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile([IndexField.unqualified(name="ALL")]),
+        immediate_commit=immediate_commit,
+        commit_timeout=0,
+    )
+    commits = _Commits()
+    index._commit.add_target(commits)
+    return index, commits
+
+
+async def test_deferred_commit_commits_once_at_the_end(tmp_path):
+    index, commits = _counted_index(tmp_path)
+    with index.deferred_commit():
+        for nr in range(5):
+            index.add_record(f"id_{nr}", dict(ALL="value"))
+        assert commits.count == 0
+        assert index.search_query("value")["count"] == 0  # not yet
+    assert commits.count == 1
+    assert index.search_query("value")["count"] == 5
+
+    index.add_record("id_5", dict(ALL="value"))  # after the block: as before
+    assert commits.count == 2
+
+
+async def test_deferred_commit_nested_commits_at_the_outermost(tmp_path):
+    index, commits = _counted_index(tmp_path)
+    with index.deferred_commit():
+        with index.deferred_commit():
+            index.add_record("id_1", dict(ALL="value"))
+        assert commits.count == 0
+        index.add_record("id_2", dict(ALL="value"))
+    assert commits.count == 1
+
+
+async def test_deferred_commit_commits_when_it_raises(tmp_path):
+    index, commits = _counted_index(tmp_path)
+    with pytest.raises(ValueError):
+        with index.deferred_commit():
+            index.add_record("id_1", dict(ALL="value"))
+            raise ValueError("oops")
+    assert commits.count == 1
+    assert index.search_query("value")["count"] == 1
+
+
+async def test_deferred_commit_without_changes_does_not_commit(tmp_path):
+    index, commits = _counted_index(tmp_path)
+    with index.deferred_commit():
+        pass
+    assert commits.count == 0
+
+
+async def test_deferred_commit_does_not_put_off_an_explicit_commit(tmp_path):
+    index, commits = _counted_index(tmp_path)
+    index.add_record("id_1", dict(ALL="value"))
+    assert commits.count == 1
+    with index.deferred_commit():
+        index.delete_record("id_1", immediate_commit=True)
+        assert commits.count == 2
+        assert index.search_query("value")["count"] == 0
+        index.delete_record("id_2")  # an implicit one waits
+        assert commits.count == 2
+    assert commits.count == 3
+
+
+async def test_deferred_commit_leaves_auto_commit_alone(tmp_path):
+    index, commits = _counted_index(tmp_path, immediate_commit=False)
+    with index.deferred_commit():
+        index.add_record("id_1", dict(ALL="value"))
+    assert commits.count == 0  # the auto-commit does it
