@@ -64,7 +64,13 @@ class IndexField:
             return
 
         if self._fieldtype == INT:
-            builder.add_integer_field(self._name, stored=self._stored, indexed=True)
+            # fast as well: tantivy answers a range query ("number:[1 TO 5]") from the
+            # fast field's column, not by walking the terms of the index (16 ms
+            # against 0.6 ms for 120,000 documents). Changing it changes the schema:
+            # an existing index is recreated empty and needs a reindex.
+            builder.add_integer_field(
+                self._name, stored=self._stored, indexed=True, fast=True
+            )
         else:
             builder.add_text_field(
                 self._name,
