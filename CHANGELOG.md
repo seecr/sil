@@ -4,6 +4,8 @@
 
 ### Changed
 
+- The wheel only has the package itself (`sil/`); it used to install `doc/`, `examples/` and
+  other directories of the repository into site-packages too.
 - pytest, pytest-asyncio, pytest-xdist and python-multipart are no longer dependencies
   of sil; the test tools moved to `requirements-dev.txt`.
 - `README.md`, `doc/reference.md`, this changelog, `LICENSE` (GPLv2), a pre-push hook

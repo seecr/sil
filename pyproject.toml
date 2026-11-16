@@ -27,6 +27,7 @@ version_file = "sil/_version.py"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["sil*"]
 
 [tool.setuptools]
 include-package-data = true
