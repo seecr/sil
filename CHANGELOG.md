@@ -6,6 +6,15 @@
 field gets two extra columns, which changes the schema; an existing index with one starts
 empty (and `needs_reindex` is `True`).
 
+### Fixed
+
+- After a restart (or a crash) an update could leave the old version of a document in
+  the index next to the new one. A new tantivy writer gives its first operation the
+  opstamp of the last commit, which that commit's deletes have too; a merge then took
+  such a delete for one it had applied already. The engine now commits once when it
+  opens its writer. An index that has duplicates already keeps them until it is
+  rebuilt (swindl: `swindl-check` reports them as "indexed N times").
+
 ### License
 
 - sil is now MIT licensed (was GPLv2), like SWL.

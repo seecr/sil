@@ -83,6 +83,12 @@ class Engine:
             raise RuntimeError(f"Index {self._path} is shut down")
         if self._writer is None:
             self._writer = self._index.writer(self._heap_size, 1)
+            # A new writer gives its first operation the opstamp of the last commit,
+            # which that commit's deletes have too. A merge then takes a delete with
+            # that opstamp for one it applied already, and the old version of an
+            # updated document comes back next to the new one (engine_test.py). An
+            # empty commit first moves the opstamps past it.
+            self._writer.commit()
         return self._writer
 
     def add_document(self, doc):

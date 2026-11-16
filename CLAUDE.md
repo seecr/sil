@@ -41,6 +41,9 @@ flake8 sil && isort --check-only sil
 - An update is a delete followed by an add of the same record id; `None` values are
   ignored.
 - `__id__` is always stored; it is the record id (swindl adds the object id after it).
+- `Engine._get_writer` commits once right after opening the writer: without it a
+  tantivy writer's first operation gets the last commit's opstamp, and a merge can
+  undo that delete (duplicates after a restart; `engine_test.py`). Keep it.
 - Searches use a snapshot (`Engine.searcher()`); the reader is reloaded explicitly after
   a commit, so a search right after a commit sees it.
 - A sortable text/untokenized field has `sort_<name>` (the value), `sortprefix_<name>`
