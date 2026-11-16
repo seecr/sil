@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.2.0 (unreleased)
+## 3.2.0 (2026-11-16)
 
 **Rebuild every index after upgrading.** It removes duplicates the bug below may have
 left, and an index with a sortable text or untokenized field needs it anyway: such a
