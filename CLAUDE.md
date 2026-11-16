@@ -2,7 +2,7 @@
 
 A search index on tantivy (it replaced Lucene in 3.0): index profile, forgiving query
 language, multi-field sorting, drilldown, suggestions, timer commits. Used by swindl
-(one `Index` per model). GPLv2. Maintained by Seecr (Johan Jonkers, Thijs Janssen).
+(one `Index` per model). MIT licensed. Maintained by Seecr (Johan Jonkers, Thijs Janssen).
 `doc/reference.md` is the user-facing reference; keep it in step with the code.
 
 ## Layout

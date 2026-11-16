@@ -2,13 +2,17 @@
 
 ## 3.1.1 (unreleased)
 
+### License
+
+- sil is now MIT licensed (was GPLv2), like SWL.
+
 ### Changed
 
 - The wheel only has the package itself (`sil/`); it used to install `doc/`, `examples/` and
   other directories of the repository into site-packages too.
 - pytest, pytest-asyncio, pytest-xdist and python-multipart are no longer dependencies
   of sil; the test tools moved to `requirements-dev.txt`.
-- `README.md`, `doc/reference.md`, this changelog, `LICENSE` (GPLv2), a pre-push hook
+- `README.md`, `doc/reference.md`, this changelog, `LICENSE`, a pre-push hook
   (flake8, isort, tests). No change in behaviour.
 
 ## 3.1.0 (2026-11-10)

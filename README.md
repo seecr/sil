@@ -29,4 +29,4 @@ stored objects.
 - `CHANGELOG.md`: what changed.
 
 Python 3.11 or newer. sil was built on Lucene (through JCC) up to 2.x; 3.0 replaced it with
-tantivy. GPLv2, by [Seecr](https://seecr.nl).
+tantivy. MIT licensed, by [Seecr](https://seecr.nl).
