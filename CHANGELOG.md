@@ -2,9 +2,10 @@
 
 ## 3.2.0 (unreleased)
 
-**Rebuild indexes with a sortable text or untokenized field after upgrading**: such a
-field gets two extra columns, which changes the schema; an existing index with one starts
-empty (and `needs_reindex` is `True`).
+**Rebuild every index after upgrading.** It removes duplicates the bug below may have
+left, and an index with a sortable text or untokenized field needs it anyway: such a
+field gets two extra columns, which changes the schema, so that index starts empty (and
+`needs_reindex` is `True`).
 
 ### Fixed
 
@@ -12,8 +13,7 @@ empty (and `needs_reindex` is `True`).
   the index next to the new one. A new tantivy writer gives its first operation the
   opstamp of the last commit, which that commit's deletes have too; a merge then took
   such a delete for one it had applied already. The engine now commits once when it
-  opens its writer. An index that has duplicates already keeps them until it is
-  rebuilt (swindl: `swindl-check` reports them as "indexed N times").
+  opens its writer. Duplicates already in an index go with the rebuild.
 
 ### License
 
