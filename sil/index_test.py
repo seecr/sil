@@ -800,6 +800,74 @@ async def test_sorting_matches_sorting_everything(tmp_path):
             assert paged == expected, (sort, limit)
 
 
+@pytest.mark.parametrize("in_python", [1000, 3])
+async def test_sorting_text_with_the_same_first_bytes(tmp_path, monkeypatch, in_python):
+    """Text is sorted on its first 8 bytes (as an int: fast) and then on the whole
+    value. Values that only differ after 8 bytes, across page boundaries, in both
+    directions and with a second sort field, still come out right; also when a group
+    with the same prefix is too large to sort in Python (in_python=3)."""
+    import random
+
+    from . import index as index_module
+
+    for name in "PREFIX_GROUP", "PREFIX_GROUP_WITH_NEXT_KEYS", "PREFIX_GROUP_VALUES":
+        monkeypatch.setattr(index_module, name, in_python)
+    index = Index(
+        path=tmp_path,
+        profile=IndexProfile(
+            [
+                IndexField.untokenized(name="name", sortable=True),
+                IndexField.int(name="year", sortable=True),
+                IndexField.text(name="title", sortable=True),
+            ]
+        ),
+        immediate_commit=False,
+        commit_timeout=0,
+    )
+    names = ["the beatles", "the beat happening", "the beach boys", "the beat",
+             "the beatles anthology", "théo", "the", "zz", "The Beatles", "ëa",
+             "the beatlez"]  # fmt: skip
+    rnd = random.Random(7)
+    records = {}
+    for nr in range(400):
+        data = dict(name=rnd.choice(names), year=rnd.randint(0, 4),
+                    title=rnd.choice(names))  # fmt: skip
+        if nr % 13 == 0:
+            del data["name"]
+        records[f"id_{nr:03}"] = data
+        index.add_record(f"id_{nr:03}", data)
+    index.commit(immediate_commit=True)
+
+    for sort in (
+        [dict(field="name")],
+        [dict(field="name", reverse=True)],
+        [dict(field="name"), dict(field="year", reverse=True)],
+        [dict(field="year"), dict(field="name", reverse=True), dict(field="title")],
+    ):
+        expected = list(records)
+        for key in reversed(sort):
+            missing = 0 if key["field"] == "year" else ""
+            expected.sort(
+                key=lambda i: records[i].get(key["field"], missing),
+                reverse=key.get("reverse", False),
+            )
+        for limit in (5, 33, 400):
+            paged = []
+            for page in range(1, 400 // limit + 2):
+                paged += _ids(index.search_all(sort=sort, page=page, limit=limit))
+            assert paged == expected, (sort, limit)
+
+
+def test_sort_prefix_sorts_as_the_text():
+    from .indexfield import sort_hash, sort_prefix
+
+    texts = ["", "a", "ab", "abcdefgh", "abcdefghz", "b", "é", "z" * 9, "\u20ac"]
+    assert sorted(texts, key=sort_prefix) == sorted(texts)
+    assert sort_prefix("abcdefgh") == sort_prefix("abcdefghz")
+    assert sort_hash("abcdefgh") != sort_hash("abcdefghz")
+    assert sort_hash("é") == sort_hash("é")
+
+
 async def test_large_limit_and_pages_past_the_end(tmp_path):
     index = Index(
         path=tmp_path,

@@ -13,6 +13,7 @@
 
 import logging
 import re
+from collections import Counter
 from contextlib import contextmanager
 
 import tantivy
@@ -75,6 +76,12 @@ def _unwrap(query):
 # Hits with the same score as the last one of a page are ordered on age. To find
 # them it looks this far ahead at most (see _hits_by_relevance).
 SCORE_TIES_LOOKAHEAD = 8192
+# hits with the same sort prefix are sorted in Python up to this many (with more sort
+# fields, whose values are read from the documents, fewer) and this many different
+# values; a larger group is sorted on the text by tantivy
+PREFIX_GROUP = 20_000
+PREFIX_GROUP_WITH_NEXT_KEYS = 200
+PREFIX_GROUP_VALUES = 100  # a document read costs about 40 µs
 
 
 class Index:
@@ -371,7 +378,9 @@ class Index:
         )
         return [address for (_, address), _ in ordered[offset:wanted]], total
 
-    def _sorted_hits(self, searcher, query, wanted, sort_keys, count=True):
+    def _sorted_hits(
+        self, searcher, query, wanted, sort_keys, count=True, by_prefix=True
+    ):
         """The first `wanted` hits ordered on the sort fields, then on age.
 
         tantivy sorts on one fast field: sort on the first field. The hits with the
@@ -392,18 +401,24 @@ class Index:
             return [address for _, address in result.hits][:wanted], result.count
 
         (field, reverse), next_keys = sort_keys[0], sort_keys[1:]
+        # a text field: on its prefix (an int column, much faster) first; hits with the
+        # same prefix are then put in order on the whole value (see below)
+        by_prefix = by_prefix and field.has_sort_prefix
+        order_field = (
+            field.sort_prefix_field_name if by_prefix else field.sort_field_name
+        )
         result = searcher.search(
             query,
             limit=max(wanted, 1),
             count=count,
-            order_by_field=field.sort_field_name,
+            order_by_field=order_field,
             order=tantivy.Order.Desc if reverse else tantivy.Order.Asc,
         )
         hits, total = result.hits[:wanted], result.count
         if wanted == 0:
             return [], total
         if len(hits) < wanted:  # all of them
-            return self._sort_in_python(searcher, hits, sort_keys), total
+            return self._sort_in_python(searcher, hits, sort_keys, by_prefix), total
 
         boundary = hits[-1][0]
         before = [hit for hit in hits if hit[0] != boundary]
@@ -412,20 +427,51 @@ class Index:
                 (tantivy.Occur.Must, query),
                 (
                     tantivy.Occur.Must,
-                    tantivy.Query.term_query(
-                        self._schema, field.sort_field_name, boundary
-                    ),
+                    tantivy.Query.term_query(self._schema, order_field, boundary),
                 ),
             ]
         )
-        rest, _ = self._sorted_hits(
-            searcher, same_value, wanted - len(before), next_keys, count=False
+        if by_prefix:
+            rest = self._same_prefix(
+                searcher, same_value, wanted - len(before), sort_keys, boundary
+            )
+        else:
+            rest, _ = self._sorted_hits(
+                searcher, same_value, wanted - len(before), next_keys, count=False
+            )
+        return (
+            self._sort_in_python(searcher, before, sort_keys, by_prefix) + rest,
+            total,
         )
-        return self._sort_in_python(searcher, before, sort_keys) + rest, total
 
-    def _sort_in_python(self, searcher, hits, sort_keys):
-        """Order hits (sorted on the first sort field already) on all sort fields,
-        then on age. Stable sorts, the last field first."""
+    def _same_prefix(self, searcher, query, wanted, sort_keys, prefix):
+        """The first `wanted` hits of a group with the same prefix (maybe not the
+        same value), in order. Sorted here, reading one document per different value
+        (the hash tells which are the same): tantivy's sort on a text column costs
+        milliseconds even for a few hits. A group that is too large for that is
+        sorted on the text by tantivy."""
+        (first, _), next_keys = sort_keys[0], sort_keys[1:]
+        limit = PREFIX_GROUP_WITH_NEXT_KEYS if next_keys else PREFIX_GROUP
+        result = searcher.search(
+            query, limit=limit, count=True, order_by_field=SEQ_FIELD,
+            order=tantivy.Order.Asc,
+        )  # fmt: skip
+        addresses = [address for _, address in result.hits]
+        if result.count <= limit and (
+            len(set(searcher.fast_field_values(first.sort_hash_field_name, addresses)))
+            <= PREFIX_GROUP_VALUES
+        ):
+            hits = [(prefix, address) for address in addresses]
+            in_order = self._sort_in_python(searcher, hits, sort_keys, by_prefix=True)
+            return in_order[:wanted]
+        rest, _ = self._sorted_hits(
+            searcher, query, wanted, sort_keys, count=False, by_prefix=False
+        )
+        return rest
+
+    def _sort_in_python(self, searcher, hits, sort_keys, by_prefix=False):
+        """Order hits (sorted on the first sort field, or its prefix, already) on all
+        sort fields, then on age. Stable sorts, the last field first."""
         if not hits:
             return []
         addresses = [address for _, address in hits]
@@ -436,14 +482,14 @@ class Index:
         ]
         rows.sort(key=lambda row: row[1])
 
-        next_keys = sort_keys[1:]
+        (first, first_reverse), next_keys = sort_keys[0], sort_keys[1:]
+        values = {}
         if next_keys:
-            values = {}
             for address, _, _ in rows:
                 stored = searcher.doc(address).to_dict()
                 values[_key(address)] = {
                     field.sort_field_name: stored.get(field.sort_field_name, [None])[0]
-                    for field, _ in next_keys
+                    for field, _ in sort_keys
                 }
             for field, reverse in reversed(next_keys):
                 name, missing = field.sort_field_name, field.missing_sort_value
@@ -452,8 +498,46 @@ class Index:
                     reverse=reverse,
                 )
 
-        rows.sort(key=lambda row: row[2], reverse=sort_keys[0][1])
+        if by_prefix:
+            rows.sort(
+                key=self._whole_value(searcher, rows, first), reverse=first_reverse
+            )
+        else:
+            rows.sort(key=lambda row: row[2], reverse=first_reverse)
         return [address for address, _, _ in rows]
+
+    def _whole_value(self, searcher, rows, field):
+        """The sort key for rows found by prefix: the prefix, and where hits share a
+        prefix but not their value (a different hash), the value itself, read from
+        one document per value."""
+        tied = {p for p, n in Counter(row[2] for row in rows).items() if n > 1}
+        tied_rows = [row for row in rows if row[2] in tied]
+        hashes = dict(
+            zip(
+                (_key(row[0]) for row in tied_rows),
+                searcher.fast_field_values(
+                    field.sort_hash_field_name, [row[0] for row in tied_rows]
+                ),
+            )
+        )
+        per_prefix = {}
+        for row in tied_rows:
+            per_prefix.setdefault(row[2], {}).setdefault(hashes[_key(row[0])], row[0])
+        whole = {}  # (prefix, hash) -> the value
+        for prefix, by_hash in per_prefix.items():
+            if len(by_hash) > 1:  # the same prefix, different values
+                for value_hash, address in by_hash.items():
+                    stored = searcher.doc(address).to_dict()
+                    value = stored.get(field.sort_field_name, [None])[0]
+                    whole[(prefix, value_hash)] = _or(value, field.missing_sort_value)
+        missing = field.missing_sort_value
+
+        def key(row):
+            if row[2] not in tied:
+                return (row[2], missing)
+            return (row[2], whole.get((row[2], hashes[_key(row[0])]), missing))
+
+        return key
 
     def _as_hit(self, doc):
         return Hit(

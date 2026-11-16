@@ -11,6 +11,8 @@
 #
 ## end license ##
 
+import hashlib
+
 # The kinds of field. These replace the Lucene field classes (StringField,
 # TextField and IntField) that used to be passed as fieldtype.
 UNTOKENIZED = "untokenized"  # the value as one term, exact match only
@@ -83,6 +85,15 @@ class IndexField:
                     fast=True,
                     tokenizer_name=UNTOKENIZED_TOKENIZER,
                 )
+                # tantivy sorts on a text column some 30 times slower than on an int
+                # column: the first 8 bytes of the value as an int sort the same way,
+                # and Index._sorted_hits sorts on those first (see sort_prefix)
+                builder.add_integer_field(
+                    self.sort_prefix_field_name, indexed=True, fast=True
+                )
+                # and a hash of the whole value: hits with the same prefix and the
+                # same hash have the same value, without reading their documents
+                builder.add_integer_field(self.sort_hash_field_name, fast=True)
 
         if self._drilldown:
             # counted with a terms aggregation over this fast field
@@ -108,14 +119,20 @@ class IndexField:
             self._add_value(doc, self._name, value)
             # a sort field allows one value per document: sort on the first one
             if self._sortable and nr == 0:
-                self._add_value(doc, self.sort_field_name, value)
+                self._add_sort_value(doc, value)
             if self._drilldown and value:
                 doc.add_text(self.facet_dimension, str(value))
 
     def add_missing_sort_value(self, doc):
         """A document without a value sorts as Lucene sorted it: first (an empty
         string) or as 0 for an int field."""
-        self._add_value(doc, self.sort_field_name, self.missing_sort_value)
+        self._add_sort_value(doc, self.missing_sort_value)
+
+    def _add_sort_value(self, doc, value):
+        self._add_value(doc, self.sort_field_name, value)
+        if self.has_sort_prefix:
+            doc.add_integer(self.sort_prefix_field_name, sort_prefix(str(value)))
+            doc.add_integer(self.sort_hash_field_name, sort_hash(str(value)))
 
     @property
     def missing_sort_value(self):
@@ -143,6 +160,19 @@ class IndexField:
     @property
     def sort_field_name(self):
         return f"sort_{self._name}"
+
+    @property
+    def sort_prefix_field_name(self):
+        return f"sortprefix_{self._name}"
+
+    @property
+    def sort_hash_field_name(self):
+        return f"sorthash_{self._name}"
+
+    @property
+    def has_sort_prefix(self):
+        """A sortable text or untokenized field: sorted on its prefix first."""
+        return self._sortable and self._fieldtype != INT
 
     @property
     def is_sortable(self):
@@ -183,3 +213,18 @@ class IndexField:
     @classmethod
     def unqualified(cls, name):
         return cls(name, TEXT, unqualified=True)
+
+
+def sort_prefix(text):
+    """The first 8 bytes (UTF-8) of text as a signed 64 bit int that sorts as the text
+    does: tantivy orders text by its bytes. Texts with the same first 8 bytes get the
+    same number; Index._sorted_hits puts those in order on the whole text."""
+    prefix = text.encode("utf-8")[:8].ljust(8, b"\0")
+    return int.from_bytes(prefix, "big") - 2**63
+
+
+def sort_hash(text):
+    """A 64 bit hash of text (the same in every process, unlike hash()): two texts
+    with the same prefix and the same hash are taken to be the same."""
+    digest = hashlib.blake2b(text.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big", signed=True)

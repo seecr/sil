@@ -1,12 +1,25 @@
 # Changelog
 
-## 3.1.1 (unreleased)
+## 3.2.0 (unreleased)
+
+**Rebuild indexes with a sortable text or untokenized field after upgrading**: such a
+field gets two extra columns, which changes the schema; an existing index with one starts
+empty (and `needs_reindex` is `True`).
 
 ### License
 
 - sil is now MIT licensed (was GPLv2), like SWL.
 
 ### Changed
+
+- Sorting on a text or untokenized field is several times faster: tantivy sorts on a
+  text column some 30 times slower than on an int column. sil now sorts on the first 8
+  bytes of the value as an int, and puts hits with the same first bytes in order itself,
+  reading one document per different value (a hash of the value tells which are the
+  same). With 50,000 records: a range of years sorted on artist takes 0.7 ms instead
+  of 4.4 ms, page 51 of everything sorted on artist 4 ms instead of 185 ms. Where many
+  different values share their first 8 bytes, it is as fast as before (tantivy sorts
+  those on the text).
 
 - The wheel only has the package itself (`sil/`); it used to install `doc/`, `examples/` and
   other directories of the repository into site-packages too.

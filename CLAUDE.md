@@ -43,6 +43,11 @@ flake8 sil && isort --check-only sil
 - `__id__` is always stored; it is the record id (swindl adds the object id after it).
 - Searches use a snapshot (`Engine.searcher()`); the reader is reloaded explicitly after
   a commit, so a search right after a commit sees it.
+- A sortable text/untokenized field has `sort_<name>` (the value), `sortprefix_<name>`
+  (first 8 UTF-8 bytes as an order-preserving i64) and `sorthash_<name>` (blake2b, 8
+  bytes). `_sorted_hits` orders on the prefix; hits with the same prefix are ordered on
+  the value in Python (`_same_prefix`, `_whole_value`: one document read per different
+  hash), or by tantivy on the text when the group is too large (`PREFIX_GROUP*`).
 - Int fields are fast fields (range queries); changing a field's options changes the
   schema and needs a reindex: announce it in the CHANGELOG.
 
