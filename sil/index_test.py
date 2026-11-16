@@ -26,8 +26,8 @@ import pytest
 import tantivy
 
 from .index import Index
-from .indexprofile import IndexProfile
 from .indexfield import IndexField
+from .indexprofile import IndexProfile
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def index(tmp_path):
 async def test_create_index(tmp_path):
     assert len(list(tmp_path.glob("*"))) == 0
 
-    index = Index(tmp_path, IndexProfile([]), immediate_commit=True)
+    Index(tmp_path, IndexProfile([]), immediate_commit=True)
     assert set([n.name for n in tmp_path.glob("*")]) == {"index"}
 
 

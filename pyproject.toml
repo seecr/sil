@@ -8,7 +8,7 @@ authors = [
     {name = "Thijs Janssen", email = "thijs@seecr.nl"},
     {name = "Johan Jonkers", email = "johan@seecr.nl"},
 ]
-description = "Seecr Index Lib adds indexing capabilities to webbased apps"
+description = "Seecr Indexing Lib: search, sorting, drilldown and suggestions on tantivy"
 readme = "README.md"
 requires-python = ">=3.11"
 keywords = ["swl"]
@@ -19,10 +19,6 @@ classifiers = [
 ]
 dependencies = [
     "tantivy >= 0.27.0, < 0.28",
-    "pytest >= 9.1.1, < 10",
-    "pytest-asyncio >= 1.4.0, < 2",
-    "pytest-xdist >= 3.8.0, < 4",
-    "python-multipart >= 0.0.32, < 1",
 ]
 dynamic = ["version"]
 
