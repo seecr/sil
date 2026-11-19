@@ -74,6 +74,7 @@ Options (keyword arguments):
 | `sortable=True` | can be sorted on (the first value of a document) |
 | `drilldown=True` | values are counted in a search (untokenized and int fields) |
 | `suggest=True` | values are offered by `suggest()` |
+| `ascii_folding=True` | text and unqualified fields: accents and other non-ASCII letters are folded to ASCII, in the index and in queries, so `cafe` finds `Café` and `strasse` `Straße` (as Lucene's ASCIIFoldingFilter; meresco-lucene did this). Changing it needs a reindex |
 | `hierarchical=True` | the values are paths (`hbo:product>bachelorThesis`), counted as a tree; with `drilldown=True` on an untokenized field (see [Hierarchical drilldown](#hierarchical-drilldown)) |
 
 A value can be a list: every value is indexed (searching finds any of them; drilldown
@@ -173,7 +174,7 @@ query = index.cql_query("year >= 2010 AND title = fiets")      # a Query for sea
 | `fiets`, `"fiets band"` | a word or a phrase in the `unqualified` field |
 | `fiets*` | a prefix (two or more letters, digits, `_` or `-` before the `*`; `f*` is the word `f`, as in Meresco) |
 | `*` | everything |
-| `title = fiets` | in a text field: analysed as the field is (lowercase; several words are a phrase) |
+| `title = fiets` | in a text field: analysed as the field is (lowercase, folded with `ascii_folding`; several words are a phrase) |
 | `title exact Fiets`, `title == Fiets` | the term as it is, not analysed; on an untokenized field `=` does the same |
 | `type exact "a>b"` | a path in a hierarchical field |
 | `year >= 2010`, `<`, `<=`, `>` | ranges, on int fields only |

@@ -39,7 +39,7 @@ from dataclasses import dataclass, replace
 
 import tantivy
 
-from .indexfield import INT, TEXT, text_analyzer
+from .indexfield import INT, TEXT
 
 COMPARATORS = ("=", "==", "exact", "<", "<=", ">", ">=")
 # comparators CQL has but sil does not: an error, not a search for their name
@@ -288,7 +288,7 @@ class Translator:
             field = self._profile.unqualified
             if field is None:
                 return None
-            return self._analysed(field.name, clause.term)
+            return self._analysed(field, clause.term)
 
         field = self._profile.get(clause.index)
         if field is None or field.is_unqualified and clause.relation in RANGES:
@@ -300,7 +300,7 @@ class Translator:
             return self._term_query(field, clause.term)
         if clause.relation in EXACT or field.field_type != TEXT:
             return self._term_query(field, clause.term)
-        return self._analysed(field.name, clause.term)
+        return self._analysed(field, clause.term)
 
     def _term_query(self, field, value):
         try:
@@ -309,8 +309,9 @@ class Translator:
             raise CqlError(f"Not a number for {field.name}: {value!r}") from None
         return query.query, query.constant_score
 
-    def _analysed(self, name, term):
-        words = [token for token in text_analyzer.analyze(term)]
+    def _analysed(self, field, term):
+        name = field.name
+        words = field.analyzer.analyze(term)
         if not words:
             return None
         if len(words) == 1:

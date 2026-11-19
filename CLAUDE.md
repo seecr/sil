@@ -10,7 +10,7 @@ language, multi-field sorting, drilldown, suggestions, timer commits. Used by sw
 - `sil/index.py` – `Index` (add/delete/commit/search/suggest, sorting, the query
   language), `Hit`, `Query`
 - `sil/indexfield.py` – `IndexField` (untokenized, text, int, unqualified; stored,
-  sortable, drilldown, hierarchical, suggest) and how each adds itself to the tantivy
+  sortable, drilldown, hierarchical, ascii_folding, suggest) and how each adds itself to the tantivy
   schema
 - `sil/indexprofile.py` – `IndexProfile` (the fields of an index)
 - `sil/engine.py` – `Engine`: the tantivy index with its one writer (lazy, behind a lock)
@@ -39,6 +39,9 @@ flake8 sil && isort --check-only sil
   CQL (`cql_query`) is the exception: it is for APIs (SRU), and raises `CqlError`.
 - Ordering ties (equal scores, equal sort values, `*`) by insertion order (`__seq__`),
   as Lucene did; paging must be stable.
+- tantivy keeps only a tokenizer's name in the schema: `Engine` registers sil's own
+  (`FOLDING_TEXT_TOKENIZER`) every time it opens an index; query analysis (CQL,
+  prefixes) uses the field's analyzer from `indexfield.py`, which must match it.
 - The writer is opened at the first change (each tantivy writer runs threads).
 
 ## Invariants to keep

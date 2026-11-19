@@ -26,15 +26,36 @@ INT = "int"  # a (64 bit) integer
 TEXT_TOKENIZER = "default"
 UNTOKENIZED_TOKENIZER = "raw"
 
-# The words of a text the way TEXT_TOKENIZER makes them: tantivy's "default" is the
+# The same, with accents and other non-ASCII letters folded to ASCII ("café" is
+# "cafe", "Straße" "strasse"), as Lucene's ASCIIFoldingFilter (meresco-lucene's
+# analyzer did this). Registered by the Engine under this name.
+FOLDING_TEXT_TOKENIZER = "default_ascii_folding"
+
+
+def _analyzer(tokenizer, folding):
+    builder = tantivy.TextAnalyzerBuilder(tokenizer)
+    builder = builder.filter(tantivy.Filter.remove_long(40)).filter(
+        tantivy.Filter.lowercase()
+    )
+    if folding:
+        builder = builder.filter(tantivy.Filter.ascii_fold())
+    return builder.build()
+
+
+def folding_text_analyzer():
+    """The analyzer of FOLDING_TEXT_TOKENIZER (a new one: register_tokenizer takes
+    it over)."""
+    return _analyzer(tantivy.Tokenizer.simple(), folding=True)
+
+
+# The words of a text the way the tokenizers make them: tantivy's "default" is the
 # simple tokenizer, words longer than 40 bytes left out, lowercased. Used to analyse
-# terms of a query (CQL) as the field was indexed; change both together.
-text_analyzer = (
-    tantivy.TextAnalyzerBuilder(tantivy.Tokenizer.simple())
-    .filter(tantivy.Filter.remove_long(40))
-    .filter(tantivy.Filter.lowercase())
-    .build()
-)
+# terms of a query (CQL) as the field was indexed; change them together.
+text_analyzer = _analyzer(tantivy.Tokenizer.simple(), folding=False)
+folding_text_analyzer_for_queries = folding_text_analyzer()
+# one word as it is in the index, for a prefix: lowercased (and folded)
+_word = _analyzer(tantivy.Tokenizer.raw(), folding=False)
+_folded_word = _analyzer(tantivy.Tokenizer.raw(), folding=True)
 
 # Between the levels of a hierarchical value, as it is given and searched for:
 # ("hbo:product", "bachelorThesis") is the term "hbo:product>bachelorThesis"
@@ -58,9 +79,12 @@ class IndexField:
         drilldown=False,
         suggest=False,
         hierarchical=False,
+        ascii_folding=False,
     ):
         if fieldtype not in (UNTOKENIZED, TEXT, INT):
             raise ValueError(f"Unknown field type: {fieldtype!r}")
+        if ascii_folding and fieldtype != TEXT:
+            raise ValueError("Only a text field can have ascii_folding")
         if hierarchical and not (
             fieldtype == UNTOKENIZED and drilldown and not unqualified
         ):
@@ -77,10 +101,11 @@ class IndexField:
         self._unqualified = unqualified
         self._suggest = suggest
         self._hierarchical = hierarchical
+        self._ascii_folding = ascii_folding
 
     def add_to_schema(self, builder):
         if self._unqualified:
-            builder.add_text_field(self._name, tokenizer_name=TEXT_TOKENIZER)
+            builder.add_text_field(self._name, tokenizer_name=self.tokenizer_name)
             return
 
         if self._fieldtype == INT:
@@ -95,9 +120,7 @@ class IndexField:
             builder.add_text_field(
                 self._name,
                 stored=self._stored,
-                tokenizer_name=(
-                    TEXT_TOKENIZER if self._fieldtype == TEXT else UNTOKENIZED_TOKENIZER
-                ),
+                tokenizer_name=self.tokenizer_name,
             )
 
         if self._sortable:
@@ -239,6 +262,28 @@ class IndexField:
         return self._drilldown
 
     @property
+    def tokenizer_name(self):
+        if self._fieldtype != TEXT:
+            return UNTOKENIZED_TOKENIZER
+        return FOLDING_TEXT_TOKENIZER if self._ascii_folding else TEXT_TOKENIZER
+
+    @property
+    def analyzer(self):
+        """The words of a text as this (text) field indexes them."""
+        return (
+            folding_text_analyzer_for_queries if self._ascii_folding else text_analyzer
+        )
+
+    def word_as_indexed(self, word):
+        """One word as it is in the index of this text field: lowercased, and
+        folded with ascii_folding (for a prefix query)."""
+        return (_folded_word if self._ascii_folding else _word).analyze(word)[0]
+
+    @property
+    def is_ascii_folding(self):
+        return self._ascii_folding
+
+    @property
     def is_hierarchical(self):
         return self._hierarchical
 
@@ -263,8 +308,8 @@ class IndexField:
         return cls(name, INT, **kwargs)
 
     @classmethod
-    def unqualified(cls, name):
-        return cls(name, TEXT, unqualified=True)
+    def unqualified(cls, name, **kwargs):
+        return cls(name, TEXT, unqualified=True, **kwargs)
 
 
 def as_path(value):

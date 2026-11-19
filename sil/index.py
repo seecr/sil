@@ -295,7 +295,7 @@ class Index:
             if field is None or field.field_type == INT:
                 return match.group(0)  # leave it to the parser
             if field.field_type == TEXT or field.is_unqualified:
-                word = word.lower()  # as the words in the index
+                word = field.word_as_indexed(word)  # as the words in the index
             # a regex needs a field, also when it is the default field
             return f"{before}{field.name}:/{word}.*/"
 

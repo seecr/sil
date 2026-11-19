@@ -17,6 +17,8 @@ import threading
 
 import tantivy
 
+from .indexfield import FOLDING_TEXT_TOKENIZER, folding_text_analyzer
+
 logger = logging.getLogger(__name__)
 
 # The writer buffers this much before it flushes a segment by itself. One indexing
@@ -58,6 +60,10 @@ class Engine:
             path.mkdir(parents=True)
             self._index = tantivy.Index(schema, path=path.as_posix(), reuse=True)
             self.recreated = True
+
+        # tantivy keeps only the name of a tokenizer in the schema: sil's own ones
+        # are registered every time the index is opened
+        self._index.register_tokenizer(FOLDING_TEXT_TOKENIZER, folding_text_analyzer())
 
         # Reload explicitly after a commit, so a search right after a commit sees it
         # (the "OnCommit" policy reloads asynchronously, a little later).
