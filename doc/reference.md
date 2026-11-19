@@ -73,6 +73,7 @@ Options (keyword arguments):
 | `sortable=True` | can be sorted on (the first value of a document) |
 | `drilldown=True` | values are counted in a search (untokenized and int fields) |
 | `suggest=True` | values are offered by `suggest()` |
+| `hierarchical=True` | the values are paths (`hbo:product>bachelorThesis`), counted as a tree; with `drilldown=True` on an untokenized field (see [Hierarchical drilldown](#hierarchical-drilldown)) |
 
 A value can be a list: every value is indexed (searching finds any of them; drilldown
 counts all of them; sorting uses the first). `None` and `[]` mean no value. Every index has
@@ -173,8 +174,55 @@ result["drilldown"]                    # {"genre": [("sf", 12), ("fantasy", 3)]}
 ```
 
 Counts the values of `drilldown=True` fields in all hits of the query (not only the page),
-most first; equal counts alphabetically. `count` (default 10) is how many values. To
-filter on a value someone clicked, add a `term_query` with `all_of`.
+most first; equal counts alphabetically. `count` (default 10) is how many values; `0`
+gives all of them. To filter on a value someone clicked, add a `term_query` with
+`all_of`.
+
+### Hierarchical drilldown
+
+Some values have levels: a publication type `hbo:product` with below it
+`bachelorThesis` and `masterThesis`, or an organisation with its departments. A
+hierarchical field counts them as a tree:
+
+```python
+IndexField.untokenized("type", drilldown=True, hierarchical=True)
+
+index.add_record("1", {"type": ("hbo:product", "bachelorThesis")})   # a path: a tuple
+index.add_record("2", {"type": "hbo:product>bachelorThesis"})        # or levels with ">"
+index.add_record("3", {"type": ("hbo:product", "masterThesis")})
+index.add_record("4", {"type": "hbo:datasets"})                      # one level
+
+result = index.search_all(drilldown=[{"name": "type"}])
+result["drilldown"]
+# {"type": [
+#     ("hbo:product", 3, [
+#         ("bachelorThesis", 2, []),
+#         ("masterThesis", 1, []),
+#     ]),
+#     ("hbo:datasets", 1, []),
+# ]}
+```
+
+Each value comes with its count and the values one level below it, in the same form
+(`[]` for the last level), so `value, count = item[:2]` works for flat and hierarchical
+fields alike. A document counts once for every level of its paths, also when two of its
+paths share a level. In the request:
+
+| | |
+|---|---|
+| `count` | values per level (default 10; `0`: all) |
+| `path` | start below this value: `["hbo:product"]` or `"hbo:product"` gives `[("bachelorThesis", 2, []), ("masterThesis", 1, [])]` |
+| `depth` | how many levels (default all); `1` gives the top level only, each with `[]` |
+
+A term query on a level finds everything below it:
+`term_query("type", "hbo:product")` finds documents 1, 2 and 3;
+`term_query("type", "hbo:product>masterThesis")` (or the tuple
+`("hbo:product", "masterThesis")`) finds document 3.
+
+A list of values is several values, as for any field, so a path goes in a tuple or as one
+string with `>`: `["hbo:product", "bachelorThesis"]` would be two values of one level
+each. A level can therefore not contain `>`. A hierarchical field can not be sortable,
+stored or suggest.
 
 ## Suggestions
 

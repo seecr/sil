@@ -24,6 +24,13 @@ INT = "int"  # a (64 bit) integer
 TEXT_TOKENIZER = "default"
 UNTOKENIZED_TOKENIZER = "raw"
 
+# Between the levels of a hierarchical value, as it is given and searched for:
+# ("hbo:product", "bachelorThesis") is the term "hbo:product>bachelorThesis"
+PATH_SEPARATOR = ">"
+# Between the levels in the drilldown column: a character no level contains, so the
+# levels can be told apart again when counting
+FACET_PATH_SEPARATOR = "\x1f"
+
 
 class IndexField:
     ID_FIELD = "__id__"
@@ -38,9 +45,18 @@ class IndexField:
         unqualified=False,
         drilldown=False,
         suggest=False,
+        hierarchical=False,
     ):
         if fieldtype not in (UNTOKENIZED, TEXT, INT):
             raise ValueError(f"Unknown field type: {fieldtype!r}")
+        if hierarchical and not (
+            fieldtype == UNTOKENIZED and drilldown and not unqualified
+        ):
+            raise ValueError("Only an untokenized drilldown field can be hierarchical")
+        if hierarchical and (sortable or stored or suggest):
+            raise ValueError(
+                "A hierarchical field can not be sortable, stored or suggest"
+            )
         self._name = name
         self._fieldtype = fieldtype
         self._stored = stored
@@ -48,6 +64,7 @@ class IndexField:
         self._drilldown = drilldown
         self._unqualified = unqualified
         self._suggest = suggest
+        self._hierarchical = hierarchical
 
     def add_to_schema(self, builder):
         if self._unqualified:
@@ -115,6 +132,20 @@ class IndexField:
             doc.add_text(self._name, values_as_text)
             return
 
+        if self._hierarchical:
+            # every level of every path: a term query on "a" finds "a>b" too, and
+            # the drilldown counts each level. A level shared by two values of one
+            # document is added once, so the document counts once for it.
+            paths = {}
+            for value in values:
+                path = as_path(value)
+                for depth in range(1, len(path) + 1):
+                    paths[tuple(path[:depth])] = None
+            for path in paths:
+                doc.add_text(self._name, PATH_SEPARATOR.join(path))
+                doc.add_text(self.facet_dimension, FACET_PATH_SEPARATOR.join(path))
+            return
+
         for nr, value in enumerate(values):
             self._add_value(doc, self._name, value)
             # a sort field allows one value per document: sort on the first one
@@ -146,8 +177,13 @@ class IndexField:
 
     def term_value(self, value):
         """A value as the term to look for: an int for an int field, a string
-        otherwise. A text field is not analyzed here (as a Lucene TermQuery)."""
-        return int(value) if self._fieldtype == INT else str(value)
+        otherwise. A text field is not analyzed here (as a Lucene TermQuery). A path
+        in a hierarchical field may be given as a tuple or list of levels."""
+        if self._fieldtype == INT:
+            return int(value)
+        if self._hierarchical:
+            return PATH_SEPARATOR.join(as_path(value))
+        return str(value)
 
     @property
     def name(self):
@@ -191,6 +227,10 @@ class IndexField:
         return self._drilldown
 
     @property
+    def is_hierarchical(self):
+        return self._hierarchical
+
+    @property
     def is_suggest(self):
         return self._suggest
 
@@ -213,6 +253,16 @@ class IndexField:
     @classmethod
     def unqualified(cls, name):
         return cls(name, TEXT, unqualified=True)
+
+
+def as_path(value):
+    """A hierarchical value as a list of levels: a tuple or list is a path, a string
+    is split on ">" ("hbo:product>bachelorThesis"). Empty levels are left out."""
+    if isinstance(value, (list, tuple)):
+        levels = [str(level) for level in value]
+    else:
+        levels = str(value).split(PATH_SEPARATOR)
+    return [level for level in levels if level != ""]
 
 
 def sort_prefix(text):

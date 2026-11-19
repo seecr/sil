@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Hierarchical drilldown: `IndexField.untokenized(name, drilldown=True,
+  hierarchical=True)`. Values are paths (a tuple of levels, or levels with `>` between
+  them); the drilldown gives a tree of `(value, count, subvalues)`, with `path` (start
+  below a value) and `depth` in the request; a term query on a level finds everything
+  below it. See "Hierarchical drilldown" in `doc/reference.md`.
+- Drilldown `"count": 0` gives all values (as meresco-lucene's `maxTerms=0`).
+
+No change to the schema of existing fields: no reindex needed.
+
 ## 3.2.0 (2026-11-16)
 
 **Rebuild every index after upgrading.** It removes duplicates the bug below may have

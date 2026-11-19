@@ -10,10 +10,12 @@ language, multi-field sorting, drilldown, suggestions, timer commits. Used by sw
 - `sil/index.py` – `Index` (add/delete/commit/search/suggest, sorting, the query
   language), `Hit`, `Query`
 - `sil/indexfield.py` – `IndexField` (untokenized, text, int, unqualified; stored,
-  sortable, drilldown, suggest) and how each adds itself to the tantivy schema
+  sortable, drilldown, hierarchical, suggest) and how each adds itself to the tantivy
+  schema
 - `sil/indexprofile.py` – `IndexProfile` (the fields of an index)
 - `sil/engine.py` – `Engine`: the tantivy index with its one writer (lazy, behind a lock)
-- `sil/drilldown.py` – counts per value (terms aggregation on a fast field)
+- `sil/drilldown.py` – counts per value (terms aggregation on a fast field); a tree for a
+  hierarchical field (every level is a term, joined by `\x1f` in the facet column)
 - `sil/suggester.py` – `Suggester`: its own small tantivy index per suggest field
 - `sil/commit.py` – `Commit`: commits targets, as an asyncio timer task or on demand
 
