@@ -19,6 +19,8 @@ from contextlib import contextmanager
 import tantivy
 
 from .commit import Commit
+from .cql import Boolean, SearchClause, Translator
+from .cql import parse as parse_cql
 from .drilldown import Drilldown
 from .engine import Engine
 from .indexfield import INT, TEXT, UNTOKENIZED, IndexField
@@ -271,6 +273,13 @@ class Index:
             except ValueError as e:
                 raise ValueError(f"Invalid query: {query!r}") from e
         return Query(parsed)
+
+    def cql_query(self, cql):
+        """A query from CQL: a string or a tree from sil.cql.parse (see sil/cql.py).
+        Raises sil.cql.CqlError for CQL that can not be parsed or is not supported."""
+        tree = cql if isinstance(cql, (SearchClause, Boolean)) else parse_cql(cql)
+        query, constant_score = Translator(self).query(tree)
+        return Query(query, constant_score=constant_score)
 
     def _prefixes_as_regex(self, query):
         """tantivy has no prefix query in its query language ("roc*"); a regex does
@@ -562,6 +571,9 @@ class Index:
     def search_query(self, query, *args, **kwargs):
         parsed_query = self.parse_query(query)
         return self.search(parsed_query, *args, **kwargs)
+
+    def search_cql(self, cql, *args, **kwargs):
+        return self.search(self.cql_query(cql), *args, **kwargs)
 
     def suggest(self, field, value):
         suggester = self._suggesters[field]

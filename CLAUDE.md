@@ -16,6 +16,8 @@ language, multi-field sorting, drilldown, suggestions, timer commits. Used by sw
 - `sil/engine.py` – `Engine`: the tantivy index with its one writer (lazy, behind a lock)
 - `sil/drilldown.py` – counts per value (terms aggregation on a fast field); a tree for a
   hierarchical field (every level is a term, joined by `\x1f` in the facet column)
+- `sil/cql.py` – CQL: own parser (cqlparser's precedence: OR weakest) to a tree of
+  `SearchClause`/`Boolean`, `Translator` to tantivy queries as meresco-lucene did
 - `sil/suggester.py` – `Suggester`: its own small tantivy index per suggest field
 - `sil/commit.py` – `Commit`: commits targets, as an asyncio timer task or on demand
 
@@ -34,6 +36,7 @@ flake8 sil && isort --check-only sil
 - A changed profile (schema) recreates the index empty and sets `needs_reindex`; sil
   never rebuilds from data itself (it has none: the application does that).
 - Invalid query syntax is searched literally: a search box never raises.
+  CQL (`cql_query`) is the exception: it is for APIs (SRU), and raises `CqlError`.
 - Ordering ties (equal scores, equal sort values, `*`) by insertion order (`__seq__`),
   as Lucene did; paging must be stable.
 - The writer is opened at the first change (each tantivy writer runs threads).

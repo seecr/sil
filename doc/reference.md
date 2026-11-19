@@ -16,6 +16,7 @@ what swindl passes on (index fields, the query syntax, sorting, drilldown).
 - [Commits](#commits)
 - [Searching](#searching)
 - [The query language](#the-query-language)
+- [CQL](#cql)
 - [Sorting](#sorting)
 - [Drilldown](#drilldown)
 - [Suggestions](#suggestions)
@@ -155,6 +156,51 @@ tantivy's query language, made forgiving for search boxes:
 
 A query that is not valid syntax (a stray quote, an unknown field) is searched for
 literally, with the special characters as spaces, so a search box never gives an error.
+
+## CQL
+
+For applications that speak [CQL](https://www.loc.gov/standards/sru/cql/) (SRU, or a
+portal that came from Meresco), sil understands CQL as well. It gives the same hits as
+Meresco (cqlparser and meresco-lucene) gave:
+
+```python
+index.search_cql('fiets AND untokenized.type exact "hbo:product>bachelor"', limit=10)
+query = index.cql_query("year >= 2010 AND title = fiets")      # a Query for search()
+```
+
+| | |
+|---|---|
+| `fiets`, `"fiets band"` | a word or a phrase in the `unqualified` field |
+| `fiets*` | a prefix (two or more letters, digits, `_` or `-` before the `*`; `f*` is the word `f`, as in Meresco) |
+| `*` | everything |
+| `title = fiets` | in a text field: analysed as the field is (lowercase; several words are a phrase) |
+| `title exact Fiets`, `title == Fiets` | the term as it is, not analysed; on an untokenized field `=` does the same |
+| `type exact "a>b"` | a path in a hierarchical field |
+| `year >= 2010`, `<`, `<=`, `>` | ranges, on int fields only |
+| `a AND b`, `a OR b`, `a NOT b` | booleans; `OR` binds weakest, `AND` and `NOT` are read from left to right (as Meresco's cqlparser did; the CQL standard has no precedence) |
+| `title =/boost=2 fiets` | a boost |
+
+Unlike the query language, CQL is not forgiving: CQL that can not be parsed, or that sil
+does not support (`any`, `all`, `adj`, `<>`, `prox`, modifiers other than `boost`,
+prefix assignments), raises `sil.cql.CqlError` (a `ValueError`). An index that is not in
+the profile matches nothing; a term without words (`title = "*"`) is left out of the
+query, as Meresco did.
+
+The tree of a query, to look at or change before searching (for instance to rename old
+index names):
+
+```python
+from dataclasses import replace
+from sil.cql import parse, rewrite, to_cql
+
+tree = parse("dc.title = fiets OR boten")
+tree = rewrite(tree, lambda c: replace(c, index="title") if c.index == "dc.title" else c)
+to_cql(tree)                       # 'title = fiets OR boten'
+index.search_cql(tree)
+```
+
+A tree is made of `SearchClause(term, index, relation, boost)` and
+`Boolean(operator, left, right)` (operator `"and"`, `"or"` or `"not"`).
 
 ## Sorting
 

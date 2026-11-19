@@ -13,6 +13,8 @@
 
 import hashlib
 
+import tantivy
+
 # The kinds of field. These replace the Lucene field classes (StringField,
 # TextField and IntField) that used to be passed as fieldtype.
 UNTOKENIZED = "untokenized"  # the value as one term, exact match only
@@ -23,6 +25,16 @@ INT = "int"  # a (64 bit) integer
 # splits on everything that is not a letter or a digit and lowercases
 TEXT_TOKENIZER = "default"
 UNTOKENIZED_TOKENIZER = "raw"
+
+# The words of a text the way TEXT_TOKENIZER makes them: tantivy's "default" is the
+# simple tokenizer, words longer than 40 bytes left out, lowercased. Used to analyse
+# terms of a query (CQL) as the field was indexed; change both together.
+text_analyzer = (
+    tantivy.TextAnalyzerBuilder(tantivy.Tokenizer.simple())
+    .filter(tantivy.Filter.remove_long(40))
+    .filter(tantivy.Filter.lowercase())
+    .build()
+)
 
 # Between the levels of a hierarchical value, as it is given and searched for:
 # ("hbo:product", "bachelorThesis") is the term "hbo:product>bachelorThesis"

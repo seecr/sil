@@ -10,6 +10,10 @@
   below a value) and `depth` in the request; a term query on a level finds everything
   below it. See "Hierarchical drilldown" in `doc/reference.md`.
 - Drilldown `"count": 0` gives all values (as meresco-lucene's `maxTerms=0`).
+- CQL: `Index.cql_query(cql)` and `Index.search_cql(cql, ...)`, with `sil.cql.parse`,
+  `rewrite` and `to_cql` for the tree. Gives the hits Meresco (cqlparser,
+  meresco-lucene) gave, including its precedence (`OR` binds weakest). Own parser, no
+  new dependency. See "CQL" in `doc/reference.md`.
 
 No change to the schema of existing fields: no reindex needed.
 
