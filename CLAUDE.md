@@ -29,7 +29,7 @@ flake8 sil && isort --check-only sil
 ```
 
 `env/` is the virtualenv (see the seecr-python rebuild-venv skill); the dev tools
-(flake8, isort, pytest) are the `dev` dependency group in `pyproject.toml`:
+(flake8, isort, pytest-xdist) are the `dev` dependency group in `pyproject.toml`:
 `env/bin/pip install -e . --group dev`.
 
 On PyPI the distribution is `seecr-sil` (`sil` was taken); the package and import stay

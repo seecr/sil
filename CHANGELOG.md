@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- pytest and pytest-asyncio are dependencies again: the tests are part of the package
+  (3.4.0 had moved them to the dev group). The dev group has flake8, isort and
+  pytest-xdist.
+
 ## 3.4.0 (2026-11-23)
 
 First release on PyPI: `pip install seecr-sil` (the import stays `sil`).
