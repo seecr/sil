@@ -1,5 +1,8 @@
 # sil – Seecr Indexing Lib
 
+[![Tests](https://github.com/seecr/sil/actions/workflows/test.yml/badge.svg)](https://github.com/seecr/sil/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/seecr-sil.svg)](https://pypi.org/project/seecr-sil/)
+
 A search index for Python applications, on [tantivy](https://github.com/quickwit-oss/tantivy):
 an index profile in Python, a forgiving query language, sorting on several fields,
 drilldown (counts per value), suggestions while typing, and commits on a timer. One index
