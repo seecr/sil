@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 3.4.0 (2026-11-23)
+
+First release on PyPI: `pip install seecr-sil` (the import stays `sil`).
 
 ### Changed
 
