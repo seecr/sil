@@ -28,7 +28,14 @@ pytest sil                       # the tests
 flake8 sil && isort --check-only sil
 ```
 
-`env/` is the virtualenv, with `requirements-dev.txt` (flake8, isort, pytest).
+`env/` is the virtualenv (see the seecr-python rebuild-venv skill); the dev tools
+(flake8, isort, pytest) are the `dev` dependency group in `pyproject.toml`:
+`env/bin/pip install -e . --group dev`.
+
+Releasing: give the version a `## X.Y.Z (date)` section in `CHANGELOG.md`, then push
+the tag `X.Y.Z` to GitHub; `.github/workflows/publish.yml` builds it, uploads it to
+PyPI (trusted publishing) and makes the GitHub release. The tag is the version
+(setuptools-scm).
 
 ## Design decisions (deliberate, don't re-propose)
 

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm"]
+requires = ["setuptools >= 84.2.1", "setuptools-scm >= 10.3.4"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,16 +11,42 @@ authors = [
 description = "Seecr Indexing Lib: search, sorting, drilldown and suggestions on tantivy"
 readme = "README.md"
 requires-python = ">=3.11"
-keywords = ["swl"]
-license = {file = "LICENSE"}
+keywords = ["search", "index", "full-text", "tantivy", "drilldown", "facets", "cql", "seecr"]
+license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
-    "License :: OSI Approved :: MIT License",
+    "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: POSIX",
+    "Intended Audience :: Developers",
+    "Topic :: Database",
+    "Topic :: Text Processing :: Indexing",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
     "tantivy >= 0.27.0, < 0.28",
 ]
 dynamic = ["version"]
+
+[project.urls]
+Documentation = "https://github.com/seecr/sil/blob/master/doc/reference.md"
+Source = "https://github.com/seecr/sil"
+Issues = "https://github.com/seecr/sil/issues"
+Changelog = "https://github.com/seecr/sil/blob/master/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+    "flake8 >= 7.5.0, < 8",
+    "isort >= 9.0.2, < 10",
+    "pytest >= 9.1.1, < 10",
+    "pytest-asyncio >= 1.4.0, < 2",
+    "pytest-xdist >= 3.8.0, < 4",
+]
 
 [tool.setuptools_scm]
 version_file = "sil/_version.py"

@@ -6,9 +6,8 @@ adds what web applications need on top: an index profile in Python, a forgiving 
 language, sorting on several fields, drilldown (counts per value), suggestions while
 typing, and commits on a timer. One `Index` is one directory; no server, no JVM.
 
-In an SWL application you normally use sil through swindl, which keeps an index per model
-in step with the stored objects. This page is for using sil directly, and for looking up
-what swindl passes on (index fields, the query syntax, sorting, drilldown).
+Install with `pip install sil`; it needs Python 3.11 or newer and tantivy (installed
+with it).
 
 - [An index](#an-index)
 - [Index fields](#index-fields)
@@ -287,7 +286,7 @@ they were first added, without duplicates. Kept in `suggest/<field>/`; removed b
 tantivy has a schema: when the fields (or their options) of the profile change, the
 existing index cannot be used. sil then starts that index empty, logs a warning, and
 `index.needs_reindex` is `True`. The application rebuilds it from its data; sil never
-does that by itself (swindl: `store.reindex(models)`).
+does that by itself.
 
 ## Threads
 

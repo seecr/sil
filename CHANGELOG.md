@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- setuptools-scm is no longer installed with sil (it is only needed to build it); the
+  only dependency is tantivy. The dev tools (flake8, isort, pytest) are the `dev`
+  dependency group in `pyproject.toml` (`pip install -e . --group dev`);
+  `requirements-dev.txt` is gone.
+- The package metadata names the license as an SPDX expression (`MIT`).
+
+### Added
+
+- Published on GitHub (https://github.com/seecr/sil) and PyPI: project URLs and
+  classifiers in the metadata, tests in GitHub Actions, and a release to PyPI for every
+  version tag.
+
 ## 3.3.0 (2026-11-20)
 
 ### Added

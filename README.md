@@ -21,12 +21,12 @@ index.search_query("dune", sort="year", drilldown=[{"name": "genre"}])
 # {"count": 1, "docs": [{"__id__": "book-1"}], "drilldown": {"genre": [("sf", 1)]}}
 ```
 
-In an SWL application you normally use it through
-[swindl](https://github.com/seecr/swindl), which keeps an index per model in step with the
-stored objects.
+Install with `pip install sil`. It needs Python 3.11 or newer and tantivy.
 
-- `doc/reference.md`: the reference.
-- `CHANGELOG.md`: what changed.
+The [reference](https://github.com/seecr/sil/blob/master/doc/reference.md) describes
+everything; the [changelog](https://github.com/seecr/sil/blob/master/CHANGELOG.md) says
+what changed. sil was built on Lucene (through JCC) up to 2.x; 3.0 replaced it with
+tantivy.
 
-Python 3.11 or newer. sil was built on Lucene (through JCC) up to 2.x; 3.0 replaced it with
-tantivy. MIT licensed, by [Seecr](https://seecr.nl).
+MIT licensed, see [LICENSE](https://github.com/seecr/sil/blob/master/LICENSE). By
+[Seecr](https://seecr.nl).
