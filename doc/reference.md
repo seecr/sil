@@ -6,8 +6,8 @@ adds what web applications need on top: an index profile in Python, a forgiving 
 language, sorting on several fields, drilldown (counts per value), suggestions while
 typing, and commits on a timer. One `Index` is one directory; no server, no JVM.
 
-Install with `pip install sil`; it needs Python 3.11 or newer and tantivy (installed
-with it).
+Install with `pip install seecr-sil` (the package is `sil`); it needs Python 3.11 or
+newer and tantivy (installed with it).
 
 - [An index](#an-index)
 - [Index fields](#index-fields)

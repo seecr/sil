@@ -32,6 +32,9 @@ flake8 sil && isort --check-only sil
 (flake8, isort, pytest) are the `dev` dependency group in `pyproject.toml`:
 `env/bin/pip install -e . --group dev`.
 
+On PyPI the distribution is `seecr-sil` (`sil` was taken); the package and import stay
+`sil`.
+
 Releasing: give the version a `## X.Y.Z (date)` section in `CHANGELOG.md`, then push
 the tag `X.Y.Z` to GitHub; `.github/workflows/publish.yml` builds it, uploads it to
 PyPI (trusted publishing) and makes the GitHub release. The tag is the version

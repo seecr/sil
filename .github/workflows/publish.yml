@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/sil/
+      url: https://pypi.org/project/seecr-sil/
     permissions:
       id-token: write  # PyPI trusted publishing, no API token needed
     steps:

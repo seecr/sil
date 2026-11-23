@@ -3,7 +3,7 @@ requires = ["setuptools >= 84.2.1", "setuptools-scm >= 10.3.4"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sil"
+name = "seecr-sil"
 authors = [
     {name = "Thijs Janssen", email = "thijs@seecr.nl"},
     {name = "Johan Jonkers", email = "johan@seecr.nl"},

@@ -21,7 +21,8 @@ index.search_query("dune", sort="year", drilldown=[{"name": "genre"}])
 # {"count": 1, "docs": [{"__id__": "book-1"}], "drilldown": {"genre": [("sf", 1)]}}
 ```
 
-Install with `pip install sil`. It needs Python 3.11 or newer and tantivy.
+Install with `pip install seecr-sil` (the package is `sil`). It needs Python 3.11 or
+newer and tantivy.
 
 The [reference](https://github.com/seecr/sil/blob/master/doc/reference.md) describes
 everything; the [changelog](https://github.com/seecr/sil/blob/master/CHANGELOG.md) says

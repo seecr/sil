@@ -16,4 +16,4 @@ and credit you in the release notes unless you prefer not to be named.
 ## Supported versions
 
 Security fixes go into the latest release. Upgrade to the newest version on
-[PyPI](https://pypi.org/project/sil/) to get them.
+[PyPI](https://pypi.org/project/seecr-sil/) to get them.

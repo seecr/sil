@@ -12,7 +12,10 @@
 
 ### Added
 
-- Published on GitHub (https://github.com/seecr/sil) and PyPI: project URLs and
+- Published on GitHub (https://github.com/seecr/sil) and PyPI as `seecr-sil` (the name
+  `sil` was taken there): `pip install seecr-sil`; the import stays `import sil`. An
+  application that depends on `sil` now depends on `seecr-sil`; in an existing
+  virtualenv, `pip uninstall sil` first (both install the `sil` package). Project URLs and
   classifiers in the metadata, tests in GitHub Actions, and a release to PyPI for every
   version tag.
 
