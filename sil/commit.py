@@ -1,12 +1,12 @@
 ## begin license ##
 #
-# "SIL"(Seecr Index Lib) makes developing index apps easier
+# "SIL"(Seecr Indexing Lib) provides a search index on tantivy
 #
-# Copyright (C) 2025 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2025-2026 Seecr (Seek You Too B.V.) https://seecr.nl
 #
-# This file is part of "Seecr Index Lib"
+# This file is part of "sil"
 #
-# "Seecr Index Lib" is licensed under the MIT License; see the LICENSE file.
+# "sil" is licensed under the MIT License; see the LICENSE file.
 # SPDX-License-Identifier: MIT
 #
 ## end license ##
