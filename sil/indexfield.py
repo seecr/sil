@@ -58,7 +58,7 @@ _word = _analyzer(tantivy.Tokenizer.raw(), folding=False)
 _folded_word = _analyzer(tantivy.Tokenizer.raw(), folding=True)
 
 # Between the levels of a hierarchical value, as it is given and searched for:
-# ("hbo:product", "bachelorThesis") is the term "hbo:product>bachelorThesis"
+# ("vehicle", "bicycle") is the term "vehicle>bicycle"
 PATH_SEPARATOR = ">"
 # Between the levels in the drilldown column: a character no level contains, so the
 # levels can be told apart again when counting
@@ -314,7 +314,7 @@ class IndexField:
 
 def as_path(value):
     """A hierarchical value as a list of levels: a tuple or list is a path, a string
-    is split on ">" ("hbo:product>bachelorThesis"). Empty levels are left out."""
+    is split on ">" ("vehicle>bicycle"). Empty levels are left out."""
     if isinstance(value, (list, tuple)):
         levels = [str(level) for level in value]
     else:

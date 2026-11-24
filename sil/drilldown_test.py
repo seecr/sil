@@ -17,8 +17,8 @@ from .index import Index
 from .indexfield import IndexField
 from .indexprofile import IndexProfile
 
-BACHELOR = "info:eu-repo/semantics/bachelorThesis"
-MASTER = "info:eu-repo/semantics/masterThesis"
+BICYCLE = "https://example.org/kind/bicycle"
+CAR = "https://example.org/kind/car"
 
 
 @pytest.fixture
@@ -34,13 +34,13 @@ def index(tmp_path):
         immediate_commit=True,
     )
     # a path as a tuple, as a string with ">", and several paths in a list
-    index.add_record("1", {"ALL": "fiets", "type": ("hbo:product", BACHELOR)})
-    index.add_record("2", {"ALL": "fiets", "type": f"hbo:product>{BACHELOR}"})
-    index.add_record("3", {"ALL": "fiets", "type": ("hbo:product", MASTER)})
-    index.add_record("4", {"ALL": "auto", "type": "hbo:datasets"})
+    index.add_record("1", {"ALL": "fiets", "type": ("vehicle", BICYCLE)})
+    index.add_record("2", {"ALL": "fiets", "type": f"vehicle>{BICYCLE}"})
+    index.add_record("3", {"ALL": "fiets", "type": ("vehicle", CAR)})
+    index.add_record("4", {"ALL": "auto", "type": "boat"})
     index.add_record(
         "5",
-        {"ALL": "auto", "type": [("hbo:product", BACHELOR), ("hbo:product", MASTER)]},
+        {"ALL": "auto", "type": [("vehicle", BICYCLE), ("vehicle", CAR)]},
     )
     return index
 
@@ -50,7 +50,7 @@ def test_hierarchical_drilldown_is_a_tree(index):
     assert result["count"] == 3
     assert result["drilldown"] == {
         "type": [
-            ("hbo:product", 3, [(BACHELOR, 2, []), (MASTER, 1, [])]),
+            ("vehicle", 3, [(BICYCLE, 2, []), (CAR, 1, [])]),
         ]
     }
 
@@ -58,53 +58,53 @@ def test_hierarchical_drilldown_is_a_tree(index):
 def test_a_document_counts_once_for_a_level_its_paths_share(index):
     result = index.search_all(drilldown=[{"name": "type"}])
     assert result["drilldown"]["type"] == [
-        ("hbo:product", 4, [(BACHELOR, 3, []), (MASTER, 2, [])]),
-        ("hbo:datasets", 1, []),
+        ("vehicle", 4, [(BICYCLE, 3, []), (CAR, 2, [])]),
+        ("boat", 1, []),
     ]
 
 
 def test_path_and_depth(index):
-    result = index.search_all(drilldown=[{"name": "type", "path": ["hbo:product"]}])
-    assert result["drilldown"]["type"] == [(BACHELOR, 3, []), (MASTER, 2, [])]
+    result = index.search_all(drilldown=[{"name": "type", "path": ["vehicle"]}])
+    assert result["drilldown"]["type"] == [(BICYCLE, 3, []), (CAR, 2, [])]
 
-    result = index.search_all(drilldown=[{"name": "type", "path": "hbo:product"}])
-    assert result["drilldown"]["type"] == [(BACHELOR, 3, []), (MASTER, 2, [])]
+    result = index.search_all(drilldown=[{"name": "type", "path": "vehicle"}])
+    assert result["drilldown"]["type"] == [(BICYCLE, 3, []), (CAR, 2, [])]
 
     result = index.search_all(drilldown=[{"name": "type", "depth": 1}])
     assert result["drilldown"]["type"] == [
-        ("hbo:product", 4, []),
-        ("hbo:datasets", 1, []),
+        ("vehicle", 4, []),
+        ("boat", 1, []),
     ]
 
-    result = index.search_all(drilldown=[{"name": "type", "path": ["hbo:unknown"]}])
+    result = index.search_all(drilldown=[{"name": "type", "path": ["unknown"]}])
     assert result["drilldown"] == {}
 
 
 def test_count_is_per_level(index):
     result = index.search_all(drilldown=[{"name": "type", "count": 1}])
-    assert result["drilldown"]["type"] == [("hbo:product", 4, [(BACHELOR, 3, [])])]
+    assert result["drilldown"]["type"] == [("vehicle", 4, [(BICYCLE, 3, [])])]
 
     result = index.search_all(drilldown=[{"name": "type", "count": 0}])
     assert len(result["drilldown"]["type"][0][2]) == 2
 
 
 def test_term_query_on_a_level_finds_the_levels_below(index):
-    assert index.search_by_term("type", "hbo:product")["count"] == 4
-    assert index.search_by_term("type", f"hbo:product>{MASTER}")["count"] == 2
-    assert index.search_by_term("type", ("hbo:product", MASTER))["count"] == 2
-    assert index.search_by_term("type", MASTER)["count"] == 0
+    assert index.search_by_term("type", "vehicle")["count"] == 4
+    assert index.search_by_term("type", f"vehicle>{CAR}")["count"] == 2
+    assert index.search_by_term("type", ("vehicle", CAR))["count"] == 2
+    assert index.search_by_term("type", CAR)["count"] == 0
     query = Index.all_of(
-        index.parse_query("fiets"), index.term_query("type", f"hbo:product>{BACHELOR}")
+        index.parse_query("fiets"), index.term_query("type", f"vehicle>{BICYCLE}")
     )
     assert index.search(query)["count"] == 2
 
 
 def test_update_and_delete_change_the_counts(index):
-    index.add_record("4", {"ALL": "auto", "type": ("hbo:product", MASTER)})
+    index.add_record("4", {"ALL": "auto", "type": ("vehicle", CAR)})
     index.delete_record("5", immediate_commit=True)
     result = index.search_all(drilldown=[{"name": "type"}])
     assert result["drilldown"]["type"] == [
-        ("hbo:product", 4, [(BACHELOR, 2, []), (MASTER, 2, [])]),
+        ("vehicle", 4, [(BICYCLE, 2, []), (CAR, 2, [])]),
     ]
 
 

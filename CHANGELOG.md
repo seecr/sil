@@ -1,12 +1,17 @@
 # Changelog
 
-## Unreleased
+## 3.4.1 (2026-11-24)
 
 ### Fixed
 
 - pytest and pytest-asyncio are dependencies again: the tests are part of the package
   (3.4.0 had moved them to the dev group). The dev group has flake8, isort and
   pytest-xdist.
+
+### Changed
+
+- The examples in the reference (hierarchical drilldown, CQL) and the tests use made-up
+  values.
 
 ## 3.4.0 (2026-11-23)
 

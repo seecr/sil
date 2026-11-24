@@ -74,7 +74,7 @@ Options (keyword arguments):
 | `drilldown=True` | values are counted in a search (untokenized and int fields) |
 | `suggest=True` | values are offered by `suggest()` |
 | `ascii_folding=True` | text and unqualified fields: accents and other non-ASCII letters are folded to ASCII, in the index and in queries, so `cafe` finds `Café` and `strasse` `Straße` (as Lucene's ASCIIFoldingFilter; meresco-lucene did this). Changing it needs a reindex |
-| `hierarchical=True` | the values are paths (`hbo:product>bachelorThesis`), counted as a tree; with `drilldown=True` on an untokenized field (see [Hierarchical drilldown](#hierarchical-drilldown)) |
+| `hierarchical=True` | the values are paths (`vehicle>bicycle`), counted as a tree; with `drilldown=True` on an untokenized field (see [Hierarchical drilldown](#hierarchical-drilldown)) |
 
 A value can be a list: every value is indexed (searching finds any of them; drilldown
 counts all of them; sorting uses the first). `None` and `[]` mean no value. Every index has
@@ -164,7 +164,7 @@ portal that came from Meresco), sil understands CQL as well. It gives the same h
 Meresco (cqlparser and meresco-lucene) gave:
 
 ```python
-index.search_cql('fiets AND untokenized.type exact "hbo:product>bachelor"', limit=10)
+index.search_cql('fiets AND untokenized.type exact "vehicle>bicycle"', limit=10)
 query = index.cql_query("year >= 2010 AND title = fiets")      # a Query for search()
 ```
 
@@ -226,26 +226,25 @@ gives all of them. To filter on a value someone clicked, add a `term_query` with
 
 ### Hierarchical drilldown
 
-Some values have levels: a publication type `hbo:product` with below it
-`bachelorThesis` and `masterThesis`, or an organisation with its departments. A
-hierarchical field counts them as a tree:
+Some values have levels: a category `vehicle` with below it `bicycle` and `car`, or an
+organisation with its departments. A hierarchical field counts them as a tree:
 
 ```python
 IndexField.untokenized("type", drilldown=True, hierarchical=True)
 
-index.add_record("1", {"type": ("hbo:product", "bachelorThesis")})   # a path: a tuple
-index.add_record("2", {"type": "hbo:product>bachelorThesis"})        # or levels with ">"
-index.add_record("3", {"type": ("hbo:product", "masterThesis")})
-index.add_record("4", {"type": "hbo:datasets"})                      # one level
+index.add_record("1", {"type": ("vehicle", "bicycle")})   # a path: a tuple
+index.add_record("2", {"type": "vehicle>bicycle"})        # or levels with ">"
+index.add_record("3", {"type": ("vehicle", "car")})
+index.add_record("4", {"type": "boat"})                   # one level
 
 result = index.search_all(drilldown=[{"name": "type"}])
 result["drilldown"]
 # {"type": [
-#     ("hbo:product", 3, [
-#         ("bachelorThesis", 2, []),
-#         ("masterThesis", 1, []),
+#     ("vehicle", 3, [
+#         ("bicycle", 2, []),
+#         ("car", 1, []),
 #     ]),
-#     ("hbo:datasets", 1, []),
+#     ("boat", 1, []),
 # ]}
 ```
 
@@ -257,18 +256,17 @@ paths share a level. In the request:
 | | |
 |---|---|
 | `count` | values per level (default 10; `0`: all) |
-| `path` | start below this value: `["hbo:product"]` or `"hbo:product"` gives `[("bachelorThesis", 2, []), ("masterThesis", 1, [])]` |
+| `path` | start below this value: `["vehicle"]` or `"vehicle"` gives `[("bicycle", 2, []), ("car", 1, [])]` |
 | `depth` | how many levels (default all); `1` gives the top level only, each with `[]` |
 
 A term query on a level finds everything below it:
-`term_query("type", "hbo:product")` finds documents 1, 2 and 3;
-`term_query("type", "hbo:product>masterThesis")` (or the tuple
-`("hbo:product", "masterThesis")`) finds document 3.
+`term_query("type", "vehicle")` finds documents 1, 2 and 3;
+`term_query("type", "vehicle>car")` (or the tuple `("vehicle", "car")`) finds document 3.
 
 A list of values is several values, as for any field, so a path goes in a tuple or as one
-string with `>`: `["hbo:product", "bachelorThesis"]` would be two values of one level
-each. A level can therefore not contain `>`. A hierarchical field can not be sortable,
-stored or suggest.
+string with `>`: `["vehicle", "bicycle"]` would be two values of one level each. A level
+can therefore not contain `>`. A hierarchical field can not be sortable, stored or
+suggest.
 
 ## Suggestions
 

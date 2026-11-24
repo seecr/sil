@@ -107,10 +107,10 @@ def index(tmp_path):
             },
         )
 
-    add("1", "De fiets van Fontys", "Fontys", ("hbo:product", "bachelor"), 2009)
-    add("2", "Fietsband en auto", "Avans", ("hbo:product", "master"), 2015)
-    add("3", "Auto zonder fiets", "Fontys ICT", ("hbo:product", "bachelor"), 2020)
-    add("4", "Boten", "Avans", "hbo:datasets", 2021)
+    add("1", "De fiets van Acme", "Acme", ("vehicle", "bicycle"), 2009)
+    add("2", "Fietsband en auto", "Globex", ("vehicle", "car"), 2015)
+    add("3", "Auto zonder fiets", "Acme ICT", ("vehicle", "bicycle"), 2020)
+    add("4", "Boten", "Globex", "boat", 2021)
     return index
 
 
@@ -144,14 +144,14 @@ def test_fields(index):
     assert ids(index, "title exact fiets") == ["1", "3"]
     assert ids(index, "title exact Fiets") == []
     # untokenized: "=" is exact too; case matters
-    assert ids(index, "untokenized.organisation = Fontys") == ["1"]
-    assert ids(index, 'untokenized.organisation exact "Fontys ICT"') == ["3"]
-    assert ids(index, "untokenized.organisation == fontys") == []
+    assert ids(index, "untokenized.organisation = Acme") == ["1"]
+    assert ids(index, 'untokenized.organisation exact "Acme ICT"') == ["3"]
+    assert ids(index, "untokenized.organisation == acme") == []
 
 
 def test_hierarchical_paths(index):
-    assert ids(index, 'untokenized.type exact "hbo:product"') == ["1", "2", "3"]
-    assert ids(index, 'untokenized.type exact "hbo:product>bachelor"') == ["1", "3"]
+    assert ids(index, 'untokenized.type exact "vehicle"') == ["1", "2", "3"]
+    assert ids(index, 'untokenized.type exact "vehicle>bicycle"') == ["1", "3"]
 
 
 def test_ranges_on_int_fields(index):
@@ -188,7 +188,7 @@ def test_boost(index):
 
 def test_exact_terms_are_ordered_as_added(index):
     query = index.cql_query(
-        'untokenized.organisation exact Avans OR untokenized.type exact "hbo:product"'
+        'untokenized.organisation exact Globex OR untokenized.type exact "vehicle"'
     )
     assert query.constant_score
     hits = index.search(query)["docs"]
@@ -202,6 +202,6 @@ def test_with_drilldown_and_a_parsed_tree(index):
     )
     assert result["count"] == 3
     assert result["drilldown"]["untokenized.type"] == [
-        ("hbo:product", 2, [("bachelor", 2, [])]),
-        ("hbo:datasets", 1, []),
+        ("vehicle", 2, [("bicycle", 2, [])]),
+        ("boat", 1, []),
     ]
